@@ -11,42 +11,8 @@ using GroceryPOS.Services;
 namespace GroceryPOS.ViewModels
 {
     /// <summary>
-    /// Represents a single item in the billing cart.
-    /// </summary>
-    public class CartItem : INotifyPropertyChanged
-    {
-        /// <summary>Barcode (FK to Item.itemId).</summary>
-        public string ItemId { get; set; } = string.Empty;
-
-        /// <summary>Item description for display.</summary>
-        public string ItemDescription { get; set; } = string.Empty;
-
-        /// <summary>Unit price at time of adding to cart.</summary>
-        public double UnitPrice { get; set; }
-
-        private int _quantity = 1;
-        /// <summary>Quantity in cart.</summary>
-        public int Quantity
-        {
-            get => _quantity;
-            set
-            {
-                _quantity = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Quantity)));
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TotalPrice)));
-            }
-        }
-
-        /// <summary>Line total: UnitPrice × Quantity.</summary>
-        public double TotalPrice => UnitPrice * Quantity;
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-    }
-
-    /// <summary>
     /// ViewModel for the Billing screen.
-    /// Handles barcode scanning, cart management, bill calculation, and bill completion.
-    /// Uses percentage-based discount and tax per business rules.
+    /// Handles multiple billing tabs, barcode scanning, cart management, bill calculation, and bill completion.
     /// </summary>
     public class BillingViewModel : BaseViewModel
     {
@@ -55,22 +21,54 @@ namespace GroceryPOS.ViewModels
         private readonly BillService _billService;
         private readonly PrintService _printService;
 
-        public ObservableCollection<CartItem> CartItems { get; set; } = new();
+        public ObservableCollection<BillingTab> Tabs { get; set; } = new();
+
+        private BillingTab? _selectedTab;
+        public BillingTab? SelectedTab
+        {
+            get => _selectedTab;
+            set
+            {
+                if (SelectedTab != null) SelectedTab.IsActive = false;
+                if (SetProperty(ref _selectedTab, value))
+                {
+                    if (SelectedTab != null) SelectedTab.IsActive = true;
+                    NotifyTabPropertiesChanged();
+                    RecalculateTotal();
+                }
+            }
+        }
+
+        // Redirecting properties for UI binding to the SelectedTab
+        public ObservableCollection<CartItem> CartItems => SelectedTab?.CartItems ?? new();
+        public string DiscountText
+        {
+            get => SelectedTab?.DiscountText ?? "0";
+            set { if (SelectedTab != null) { SelectedTab.DiscountText = value; RecalculateTotal(); OnPropertyChanged(); } }
+        }
+        public string TaxText
+        {
+            get => SelectedTab?.TaxText ?? "0";
+            set { if (SelectedTab != null) { SelectedTab.TaxText = value; RecalculateTotal(); OnPropertyChanged(); } }
+        }
+        public string CashReceivedText
+        {
+            get => SelectedTab?.CashReceivedText ?? "0";
+            set { if (SelectedTab != null) { SelectedTab.CashReceivedText = value; CalculateChange(); OnPropertyChanged(); } }
+        }
+        public string InvoiceNumber
+        {
+            get => SelectedTab?.InvoiceNumber ?? "00000";
+            set { if (SelectedTab != null) { SelectedTab.InvoiceNumber = value; OnPropertyChanged(); } }
+        }
+
         public ObservableCollection<Item> ItemList { get; set; } = new();
 
         private Item? _selectedSearchItem;
         public Item? SelectedSearchItem
         {
             get => _selectedSearchItem;
-            set
-            {
-                SetProperty(ref _selectedSearchItem, value);
-                if (value != null)
-                {
-                    AddToCart(value);
-                    SelectedSearchItem = null;
-                }
-            }
+            set => SetProperty(ref _selectedSearchItem, value);
         }
 
         private string _barcodeInput = string.Empty;
@@ -96,20 +94,6 @@ namespace GroceryPOS.ViewModels
         private double _subTotal;
         public double SubTotal { get => _subTotal; set => SetProperty(ref _subTotal, value); }
 
-        private string _discountText = "0";
-        public string DiscountText
-        {
-            get => _discountText;
-            set { SetProperty(ref _discountText, value); RecalculateTotal(); }
-        }
-
-        private string _taxText = "0";
-        public string TaxText
-        {
-            get => _taxText;
-            set { SetProperty(ref _taxText, value); RecalculateTotal(); }
-        }
-
         private double _discountAmount;
         public double DiscountAmount { get => _discountAmount; set => SetProperty(ref _discountAmount, value); }
 
@@ -118,13 +102,6 @@ namespace GroceryPOS.ViewModels
 
         private double _grandTotal;
         public double GrandTotal { get => _grandTotal; set => SetProperty(ref _grandTotal, value); }
-
-        private string _cashReceivedText = "0";
-        public string CashReceivedText
-        {
-            get => _cashReceivedText;
-            set { SetProperty(ref _cashReceivedText, value); CalculateChange(); }
-        }
 
         private double _changeAmount;
         public double ChangeAmount 
@@ -139,9 +116,6 @@ namespace GroceryPOS.ViewModels
 
         public bool IsChangeNegative => ChangeAmount < 0;
         
-        private string _invoiceNumber = "00000";
-        public string InvoiceNumber { get => _invoiceNumber; set => SetProperty(ref _invoiceNumber, value); }
-
         private string _currentDateTime = DateTime.Now.ToString("dddd, dd MMMM yyyy HH:mm:ss");
         public string CurrentDateTime { get => _currentDateTime; set => SetProperty(ref _currentDateTime, value); }
 
@@ -160,6 +134,8 @@ namespace GroceryPOS.ViewModels
         public ICommand CompleteSaleCommand { get; }
         public ICommand ClearCartCommand { get; }
         public ICommand PrintReceiptCommand { get; }
+        public ICommand AddTabCommand { get; }
+        public ICommand CloseTabCommand { get; }
 
         private Bill? _lastBill;
 
@@ -177,10 +153,13 @@ namespace GroceryPOS.ViewModels
             CompleteSaleCommand = new RelayCommand(CompleteSale);
             ClearCartCommand = new RelayCommand(ClearCart);
             PrintReceiptCommand = new RelayCommand(PrintLastReceipt);
+            AddTabCommand = new RelayCommand(AddNewTab);
+            CloseTabCommand = new RelayCommand(CloseTab);
 
-            CartItems.CollectionChanged += CartItems_CollectionChanged;
             LoadItems();
-            LoadNextInvoice();
+            
+            // Initialize with first tab
+            AddNewTab();
 
             _timer = new System.Windows.Threading.DispatcherTimer();
             _timer.Interval = TimeSpan.FromSeconds(1);
@@ -188,16 +167,76 @@ namespace GroceryPOS.ViewModels
             _timer.Start();
         }
 
-        private void LoadNextInvoice()
+        private void AddNewTab()
         {
             try
             {
-                InvoiceNumber = _billService.GetNextInvoiceNumber();
+                var nextInvoice = _billService.GetNextInvoiceNumber();
+                // Increment if other tabs already have that number
+                while (Tabs.Any(t => t.InvoiceNumber == nextInvoice))
+                {
+                    if (int.TryParse(nextInvoice, out int num))
+                        nextInvoice = (num + 1).ToString("D5");
+                    else
+                        break;
+                }
+
+                var newTab = new BillingTab
+                {
+                    TabName = $"Bill {Tabs.Count + 1}",
+                    InvoiceNumber = nextInvoice
+                };
+                newTab.CartItems.CollectionChanged += (s, e) => {
+                    if (e.NewItems != null)
+                    {
+                        foreach (CartItem item in e.NewItems)
+                            item.PropertyChanged += (sender, args) => { if (args.PropertyName == nameof(CartItem.Quantity)) RecalculateTotal(); };
+                    }
+                    if (SelectedTab == newTab)
+                    {
+                        RecalculateTotal();
+                        OnPropertyChanged(nameof(CartItems));
+                    }
+                };
+                
+                Tabs.Add(newTab);
+                SelectedTab = newTab;
+                StatusMessage = $"Added new tab: {newTab.TabName}";
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Failed to load next invoice number", ex);
+                AppLogger.Error("Failed to add new tab", ex);
             }
+        }
+
+        private void CloseTab(object? parameter)
+        {
+            if (parameter is BillingTab tab)
+            {
+                if (Tabs.Count <= 1)
+                {
+                    // Don't close the last tab, just clear it
+                    ClearCart();
+                    return;
+                }
+
+                Tabs.Remove(tab);
+                if (SelectedTab == tab)
+                    SelectedTab = Tabs.LastOrDefault();
+                
+                // Rename remaining tabs for consistency
+                for (int i = 0; i < Tabs.Count; i++)
+                    Tabs[i].TabName = $"Bill {i + 1}";
+            }
+        }
+
+        private void NotifyTabPropertiesChanged()
+        {
+            OnPropertyChanged(nameof(CartItems));
+            OnPropertyChanged(nameof(DiscountText));
+            OnPropertyChanged(nameof(TaxText));
+            OnPropertyChanged(nameof(CashReceivedText));
+            OnPropertyChanged(nameof(InvoiceNumber));
         }
 
         private void LoadItems()
@@ -207,36 +246,54 @@ namespace GroceryPOS.ViewModels
                 ItemList.Add(item);
         }
 
-        private void CartItems_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        private void RecalculateTotal()
         {
-            if (e.NewItems != null)
+            try
             {
-                foreach (CartItem item in e.NewItems)
-                    item.PropertyChanged += CartItem_PropertyChanged;
+                if (SelectedTab == null) return;
+
+                SubTotal = SelectedTab.CartItems.Sum(c => c.TotalPrice);
+
+                double.TryParse(DiscountText, out var discount);
+                double.TryParse(TaxText, out var tax);
+
+                DiscountAmount = Math.Round(discount, 2);
+                TaxAmount = Math.Round(tax, 2);
+                GrandTotal = Math.Round(SubTotal - DiscountAmount + TaxAmount, 2);
+
+                if (GrandTotal < 0) GrandTotal = 0;
+                CalculateChange();
             }
-            if (e.OldItems != null)
+            catch (Exception ex)
             {
-                foreach (CartItem item in e.OldItems)
-                    item.PropertyChanged -= CartItem_PropertyChanged;
+                AppLogger.Error("RecalculateTotal failed", ex);
             }
-            RecalculateTotal();
         }
 
-        private void CartItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        private void CalculateChange()
         {
-            if (e.PropertyName == nameof(CartItem.Quantity))
-                RecalculateTotal();
+            if (double.TryParse(CashReceivedText, out var cash))
+                ChangeAmount = Math.Round(cash - GrandTotal, 2);
+            else
+                ChangeAmount = 0;
         }
 
         private void ScanBarcode()
         {
             try
             {
-                AppLogger.Info($"ScanBarcode: Started. Input: '{BarcodeInput}'");
+                // Prioritize the selected product from search dropdown
+                if (SelectedSearchItem != null)
+                {
+                    AddToCart(SelectedSearchItem);
+                    SelectedSearchItem = null;
+                    BarcodeInput = string.Empty;
+                    return;
+                }
+
                 if (string.IsNullOrWhiteSpace(BarcodeInput))
                 {
-                    StatusMessage = "Please enter or scan a barcode.";
-                    AppLogger.Warning("ScanBarcode: Empty input.");
+                    StatusMessage = "Please select a product or enter/scan a barcode.";
                     return;
                 }
 
@@ -244,60 +301,54 @@ namespace GroceryPOS.ViewModels
                 if (item == null)
                 {
                     StatusMessage = $"✗ Item not found for barcode: {BarcodeInput}";
-                    AppLogger.Warning($"ScanBarcode: Item not found for barcode: '{BarcodeInput}'");
                     BarcodeInput = string.Empty;
                     return;
                 }
 
-                AppLogger.Info($"ScanBarcode: Item found: {item.Description} (Barcode: {item.ItemId})");
                 AddToCart(item);
                 BarcodeInput = string.Empty;
             }
             catch (Exception ex)
             {
                 AppLogger.Error("ScanBarcode failed", ex);
-                StatusMessage = $"✗ Error scanning barcode: {ex.Message}";
+                StatusMessage = $"✗ Error adding item: {ex.Message}";
             }
         }
 
         private void AddToCart(Item item)
         {
-            AppLogger.Info($"AddToCart: Started for item '{item.Description}' (Barcode: {item.ItemId})");
+            if (SelectedTab == null) return;
             if (QuantityInput < 1) QuantityInput = 1;
 
-            var existingItem = CartItems.FirstOrDefault(c => c.ItemId == item.ItemId);
+            var existingItem = SelectedTab.CartItems.FirstOrDefault(c => c.ItemId == item.ItemId);
             int qtyToAdd = QuantityInput;
 
             if (existingItem != null)
             {
-                AppLogger.Info($"AddToCart: Updating existing item. Current Qty: {existingItem.Quantity}, Adding: {qtyToAdd}");
                 existingItem.Quantity += qtyToAdd;
                 StatusMessage = $"✓ {item.Description} — Added +{qtyToAdd} (Total: {existingItem.Quantity})";
-                QuantityInput = 1;
             }
             else
             {
-                AppLogger.Info($"AddToCart: Adding new item. Qty: {qtyToAdd}");
-                CartItems.Add(new CartItem
+                SelectedTab.CartItems.Add(new CartItem
                 {
                     ItemId = item.ItemId,
                     ItemDescription = item.Description,
                     UnitPrice = item.SalePrice,
                     Quantity = qtyToAdd
                 });
-                StatusMessage = $"✓ Added: {item.Description} — Qty: {qtyToAdd} — Rs.{item.SalePrice * qtyToAdd:N0}";
-                QuantityInput = 1;
+                StatusMessage = $"✓ Added: {item.Description} — Qty: {qtyToAdd}";
             }
+            QuantityInput = 1;
             RecalculateTotal();
-            AppLogger.Info($"AddToCart: Completed. Cart Items Count: {CartItems.Count}, GrandTotal: {GrandTotal}");
         }
 
         private void RemoveFromCart()
         {
-            if (SelectedCartItem != null)
+            if (SelectedCartItem != null && SelectedTab != null)
             {
                 var name = SelectedCartItem.ItemDescription;
-                CartItems.Remove(SelectedCartItem);
+                SelectedTab.CartItems.Remove(SelectedCartItem);
                 StatusMessage = $"Removed: {name}";
                 RecalculateTotal();
             }
@@ -314,84 +365,40 @@ namespace GroceryPOS.ViewModels
 
         private void DecreaseQuantity()
         {
-            if (SelectedCartItem != null)
+            if (SelectedCartItem != null && SelectedTab != null)
             {
                 if (SelectedCartItem.Quantity > 1)
                 {
                     SelectedCartItem.Quantity--;
-                    RecalculateTotal();
                 }
                 else
                 {
-                    RemoveFromCart();
+                    SelectedTab.CartItems.Remove(SelectedCartItem);
                 }
+                RecalculateTotal();
             }
-        }
-
-        /// <summary>
-        /// Recalculates bill totals using percentage-based discount and tax.
-        /// Business Rules:
-        ///   SubTotal       = Σ(Quantity × UnitPrice)
-        ///   DiscountAmount = SubTotal × (DiscountPercent / 100)
-        ///   TaxAmount      = (SubTotal - DiscountAmount) × (TaxPercent / 100)
-        ///   GrandTotal     = SubTotal - DiscountAmount + TaxAmount
-        /// </summary>
-        private void RecalculateTotal()
-        {
-            try
-            {
-                SubTotal = CartItems.Sum(c => c.TotalPrice);
-
-                double.TryParse(DiscountText, out var discount);
-                double.TryParse(TaxText, out var tax);
-
-                DiscountAmount = Math.Round(discount, 2);
-                TaxAmount = Math.Round(tax, 2);
-                GrandTotal = Math.Round(SubTotal - DiscountAmount + TaxAmount, 2);
-
-                if (GrandTotal < 0) GrandTotal = 0;
-                CalculateChange();
-                AppLogger.Info($"RecalculateTotal: SubTotal: {SubTotal}, Discount: {DiscountAmount}, Tax: {TaxAmount}, GrandTotal: {GrandTotal}");
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error("RecalculateTotal failed", ex);
-            }
-        }
-
-        private void CalculateChange()
-        {
-            if (double.TryParse(CashReceivedText, out var cash))
-                ChangeAmount = Math.Round(cash - GrandTotal, 2);
-            else
-                ChangeAmount = 0;
         }
 
         private void CompleteSale()
         {
             try
             {
-                if (!CartItems.Any())
+                if (SelectedTab == null || !SelectedTab.CartItems.Any())
                 {
-                    StatusMessage = "✗ Cart is empty. Add items before completing bill.";
+                    StatusMessage = "✗ Cart is empty.";
                     return;
                 }
 
                 if (!double.TryParse(CashReceivedText, out var cashReceived) || cashReceived < GrandTotal)
                 {
-                    StatusMessage = "✗ Cash received must be equal to or greater than grand total.";
-                    System.Windows.MessageBox.Show(
-                        "Insufficient cash received. Please enter an amount equal to or greater than the Grand Total.",
-                        "Insufficient Payment",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Warning);
+                    StatusMessage = "✗ Insufficient cash.";
                     return;
                 }
 
                 double.TryParse(DiscountText, out var discount);
                 double.TryParse(TaxText, out var tax);
 
-                var billItems = CartItems.Select(c => new BillDescription
+                var billItems = SelectedTab.CartItems.Select(c => new BillDescription
                 {
                     ItemId = c.ItemId,
                     Quantity = c.Quantity,
@@ -408,21 +415,30 @@ namespace GroceryPOS.ViewModels
                     cashReceived
                 );
 
-                StatusMessage = $"✓ Bill completed! Bill#: {_lastBill.BillId} | Total: Rs.{_lastBill.GrandTotal:N2} | Change: Rs.{_lastBill.ChangeGiven:N2}";
+                StatusMessage = $"✓ Bill completed! Bill#: {_lastBill.BillId}";
 
-                // Auto print
                 try
                 {
                     _printService.PrintReceipt(_lastBill, _authService.CurrentUser?.FullName ?? "Cashier");
                 }
-                catch
-                {
-                    StatusMessage += " (Printer not available)";
-                }
+                catch { }
 
-                ClearCart();
-                LoadNextInvoice();
-                // No need to manually reload all items, they are updated in memory by BillService
+                // After complete, remove the tab if it's not the only one, or clear it
+                if (Tabs.Count > 1)
+                {
+                    var tabToClose = SelectedTab;
+                    SelectedTab = Tabs.FirstOrDefault(t => t != tabToClose);
+                    Tabs.Remove(tabToClose);
+                    // Rename remaining tabs
+                    for (int i = 0; i < Tabs.Count; i++)
+                        Tabs[i].TabName = $"Bill {i + 1}";
+                }
+                else
+                {
+                    ClearCart();
+                    // Update invoice number for the cleared tab
+                    InvoiceNumber = _billService.GetNextInvoiceNumber();
+                }
             }
             catch (Exception ex)
             {
@@ -433,31 +449,19 @@ namespace GroceryPOS.ViewModels
 
         private void ClearCart()
         {
-            try
-            {
-                CartItems.Clear();
-                _discountText = "0"; OnPropertyChanged(nameof(DiscountText));
-                _taxText = "0"; OnPropertyChanged(nameof(TaxText));
-                _cashReceivedText = "0"; OnPropertyChanged(nameof(CashReceivedText));
-
-                RecalculateTotal();
-                StatusMessage = "Cart cleared.";
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error("ClearCart failed", ex);
-                StatusMessage = $"✗ Error clearing cart: {ex.Message}";
-            }
+            if (SelectedTab == null) return;
+            SelectedTab.CartItems.Clear();
+            SelectedTab.DiscountText = "0";
+            SelectedTab.TaxText = "0";
+            SelectedTab.CashReceivedText = "0";
+            NotifyTabPropertiesChanged();
+            RecalculateTotal();
+            StatusMessage = "Cart cleared.";
         }
 
         private void PrintLastReceipt()
         {
-            if (_lastBill == null)
-            {
-                StatusMessage = "✗ No recent bill to print.";
-                return;
-            }
-
+            if (_lastBill == null) return;
             try
             {
                 _printService.PrintReceipt(_lastBill, _authService.CurrentUser?.FullName ?? "Cashier");

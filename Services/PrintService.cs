@@ -127,92 +127,101 @@ namespace GroceryPOS.Services
             var smallFont = new Font("Consolas", 7);
 
             float y = 5;
-            float pageWidth = 290;
+            float margin = 5; // Left margin to avoid physical clipping
+            float pageWidth = 265; // Safe printable width for content, avoids right-side cut-off
             var sf = new StringFormat { Alignment = StringAlignment.Center };
             var sfRight = new StringFormat { Alignment = StringAlignment.Far };
 
             // Store header
-            g.DrawString(_storeName, headerFont, Brushes.Black, new RectangleF(0, y, pageWidth, 20), sf);
+            g.DrawString(_storeName, headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf); // Center on physical paper (302)
             y += 20;
-            g.DrawString(_storeAddress, smallFont, Brushes.Black, new RectangleF(0, y, pageWidth, 15), sf);
+            g.DrawString(_storeAddress, smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
             y += 15;
-            g.DrawString($"Ph: {_storePhone}", smallFont, Brushes.Black, new RectangleF(0, y, pageWidth, 15), sf);
+            g.DrawString($"Ph: {_storePhone}", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
             y += 18;
 
             // Divider
-            g.DrawString(new string('-', 48), normalFont, Brushes.Black, 0, y);
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
 
             // Bill info
-            g.DrawString($"Bill#: {_billToPrint.BillId}", normalFont, Brushes.Black, 0, y);
+            g.DrawString($"Bill#: {_billToPrint.BillId}", normalFont, Brushes.Black, margin, y);
             y += 13;
-            g.DrawString($"Date: {_billToPrint.BillDateTime}", normalFont, Brushes.Black, 0, y);
+            g.DrawString($"Date: {_billToPrint.BillDateTime}", normalFont, Brushes.Black, margin, y);
             y += 13;
-            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, 0, y);
+            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y);
             y += 16;
 
             // Items header
-            g.DrawString(new string('-', 48), normalFont, Brushes.Black, 0, y);
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
-            g.DrawString("Item", boldFont, Brushes.Black, 0, y);
-            g.DrawString("Qty", boldFont, Brushes.Black, 150, y);
-            g.DrawString("Price", boldFont, Brushes.Black, 190, y);
+            g.DrawString("Item", boldFont, Brushes.Black, margin, y);
+            g.DrawString("Qty", boldFont, Brushes.Black, 130, y);
+            g.DrawString("Price", boldFont, Brushes.Black, 170, y);
             g.DrawString("Total", boldFont, Brushes.Black, pageWidth, y, sfRight);
             y += 14;
-            g.DrawString(new string('-', 48), normalFont, Brushes.Black, 0, y);
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
 
             // Items
             foreach (var item in _billToPrint.Items)
             {
-                var name = item.ItemDescription.Length > 20 ? item.ItemDescription[..20] : item.ItemDescription;
-                g.DrawString(name, normalFont, Brushes.Black, 0, y);
-                g.DrawString(item.Quantity.ToString(), normalFont, Brushes.Black, 155, y);
-                g.DrawString(item.UnitPrice.ToString("N0"), normalFont, Brushes.Black, 190, y);
+                // Draw description with wrapping
+                float descWidth = 125;
+                RectangleF rect = new RectangleF(margin, y, descWidth, 200); 
+                g.DrawString(item.ItemDescription, normalFont, Brushes.Black, rect);
+                
+                // Measure how much space the description took to adjust next y
+                SizeF size = g.MeasureString(item.ItemDescription, normalFont, (int)descWidth);
+                float descHeight = Math.Max(14, size.Height);
+
+                g.DrawString(item.Quantity.ToString(), normalFont, Brushes.Black, 135, y);
+                g.DrawString(item.UnitPrice.ToString("N0"), normalFont, Brushes.Black, 170, y);
                 g.DrawString(item.TotalPrice.ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
-                y += 14;
+                
+                y += descHeight + 3; // Better spacing
             }
 
             // Totals
-            g.DrawString(new string('-', 48), normalFont, Brushes.Black, 0, y);
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
 
-            g.DrawString("Sub Total:", boldFont, Brushes.Black, 0, y);
+            g.DrawString("Sub Total:", boldFont, Brushes.Black, margin, y);
             g.DrawString($"Rs.{_billToPrint.SubTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
             y += 14;
 
-            g.DrawString("Discount:", normalFont, Brushes.Black, 0, y);
+            g.DrawString("Discount:", normalFont, Brushes.Black, margin, y);
             g.DrawString($"-Rs.{_billToPrint.DiscountAmount:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
             y += 14;
 
             if (_billToPrint.TaxAmount > 0)
             {
-                g.DrawString("Tax:", normalFont, Brushes.Black, 0, y);
+                g.DrawString("Tax:", normalFont, Brushes.Black, margin, y);
                 g.DrawString($"Rs.{_billToPrint.TaxAmount:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
                 y += 14;
             }
 
-            g.DrawString(new string('=', 48), normalFont, Brushes.Black, 0, y);
+            g.DrawString(new string('=', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
 
-            g.DrawString("GRAND TOTAL:", headerFont, Brushes.Black, 0, y);
+            g.DrawString("GRAND TOTAL:", headerFont, Brushes.Black, margin, y);
             g.DrawString($"Rs.{_billToPrint.GrandTotal:N2}", headerFont, Brushes.Black, pageWidth, y, sfRight);
             y += 20;
 
-            g.DrawString("Cash Received:", normalFont, Brushes.Black, 0, y);
+            g.DrawString("Cash Received:", normalFont, Brushes.Black, margin, y);
             g.DrawString($"Rs.{_billToPrint.CashReceived:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
             y += 14;
 
-            g.DrawString("Change:", normalFont, Brushes.Black, 0, y);
+            g.DrawString("Change:", normalFont, Brushes.Black, margin, y);
             g.DrawString($"Rs.{_billToPrint.ChangeGiven:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
             y += 20;
 
             // Footer
-            g.DrawString(new string('-', 48), normalFont, Brushes.Black, 0, y);
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
-            g.DrawString("Thank you for shopping!", normalFont, Brushes.Black, new RectangleF(0, y, pageWidth, 15), sf);
+            g.DrawString("Thank you for shopping!", normalFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
             y += 15;
-            g.DrawString("Please come again", smallFont, Brushes.Black, new RectangleF(0, y, pageWidth, 15), sf);
+            g.DrawString("Please come again", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
 
             e.HasMorePages = false;
 

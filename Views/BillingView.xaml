@@ -11,13 +11,83 @@
 
         <!-- Left: Cart Area -->
         <DockPanel Grid.Column="0" Margin="0,0,16,0">
-            <!-- Header -->
+            <!-- Header & Tabs -->
             <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="💳 Billing" FontSize="24" FontWeight="Bold"
                                Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
-                    <TextBlock Text="Scan or enter barcode to add products" FontSize="13"
-                               Foreground="{DynamicResource SubTextBrush}"/>
+                    
+                    <!-- Billing Tabs Bar -->
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <ListBox ItemsSource="{Binding Tabs}"
+                                 SelectedItem="{Binding SelectedTab}"
+                                 Background="Transparent" BorderThickness="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="0,0,4,0"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="TabBorder" CornerRadius="8,8,0,0" BorderThickness="1,1,1,0" BorderBrush="{DynamicResource BorderBrush}" Background="#F8FAFC" Padding="12,8">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="TabBorder" Property="Background" Value="White"/>
+                                                        <Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                                        <Setter TargetName="TabBorder" Property="BorderThickness" Value="1,1,1,2"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding TabName}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        
+                                        <Button Content="✕" FontSize="10" Foreground="{DynamicResource SubTextBrush}"
+                                                Command="{Binding DataContext.CloseTabCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand" VerticalAlignment="Center">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        
+                        <Button Content="➕" Style="{DynamicResource PrimaryButton}" 
+                                Command="{Binding AddTabCommand}"
+                                Padding="8,4" FontSize="12" VerticalAlignment="Bottom" Margin="4,0,0,0"/>
+                    </StackPanel>
                 </StackPanel>
                 
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">
@@ -41,7 +111,11 @@
                               IsTextSearchEnabled="True"
                               TextSearch.TextPath="Description"
                               StaysOpenOnEdit="True"
-                              Height="40" Margin="0,0,0,12"/>
+                              Height="40" Margin="0,0,0,12">
+                        <ComboBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding ScanBarcodeCommand}"/>
+                        </ComboBox.InputBindings>
+                    </ComboBox>
 
                     <!-- Barcode Input -->
                     <TextBlock Text="Or Scan Barcode" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>

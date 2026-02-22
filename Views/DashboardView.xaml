@@ -1,0 +1,99 @@
+<UserControl x:Class="GroceryPOS.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="30,24">
+        <StackPanel>
+
+            <!-- Greeting -->
+            <TextBlock Text="{Binding Greeting}" FontSize="26" FontWeight="Bold"
+                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
+            <TextBlock FontSize="13" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,28">
+                <Run Text="Today is "/>
+                <Run Text="{Binding Source={x:Static System:DateTime.Now}, StringFormat='dddd, dd MMMM yyyy', Mode=OneWay}"
+                     xmlns:System="clr-namespace:System;assembly=mscorlib"/>
+            </TextBlock>
+
+            <!-- Stats Cards -->
+            <UniformGrid Columns="4" Margin="0,0,0,28">
+
+                <!-- Today's Sales -->
+                <Border Style="{DynamicResource CardBorder}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="💰" FontSize="32" Margin="0,0,0,12"/>
+                        <TextBlock Text="Today's Sales" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"
+                                   Margin="0,6,0,0">
+                            <TextBlock.Text>
+                                <Binding Path="TodaySales" StringFormat="Rs.{0:N0}"/>
+                            </TextBlock.Text>
+                        </TextBlock>
+                        <TextBlock Foreground="{DynamicResource SubTextBrush}" FontSize="13" Margin="0,4,0,0">
+                            <Run Text="{Binding TodaySaleCount, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
+                            <Run Text=" transactions"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- Total Products -->
+                <Border Style="{DynamicResource CardBorder}" Margin="6,0">
+                    <StackPanel>
+                        <TextBlock Text="📦" FontSize="32" Margin="0,0,0,12"/>
+                        <TextBlock Text="Total Products" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="{Binding TotalProducts}" FontSize="32" FontWeight="Bold"
+                                   Foreground="{DynamicResource AccentBrush}" Margin="0,6,0,0"/>
+                        <TextBlock Text="active items" Foreground="{DynamicResource SubTextBrush}"
+                                   FontSize="13" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+
+
+
+                <!-- Quick Action -->
+                <Border Style="{DynamicResource CardBorder}" Margin="12,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="⏰" FontSize="32" Margin="0,0,0,12"/>
+                        <TextBlock Text="Current Time" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock FontSize="32" FontWeight="Bold" Foreground="{DynamicResource TextBrush}" Margin="0,6,0,0"
+                                   Text="{Binding Source={x:Static System:DateTime.Now}, StringFormat='HH:mm', Mode=OneWay}"
+                                   xmlns:System="clr-namespace:System;assembly=mscorlib"/>
+                        <TextBlock Text="Pakistan Standard Time" Foreground="{DynamicResource SubTextBrush}"
+                                   FontSize="13" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Two Column Layout -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Recent Sales -->
+                <Border Grid.Column="0" Style="{DynamicResource CardBorder}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="📋 Recent Sales" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}" Margin="0,0,0,14"/>
+
+                        <DataGrid ItemsSource="{Binding RecentSales}" Style="{DynamicResource ModernDataGrid}"
+                                  ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}"
+                                  RowStyle="{DynamicResource ModernDataGridRow}"
+                                  CellStyle="{DynamicResource ModernDataGridCell}"
+                                  MaxHeight="300">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Invoice" Binding="{Binding InvoiceNumber}" Width="*"/>
+                                <DataGridTextColumn Header="Total" Binding="{Binding GrandTotal, StringFormat='Rs.{0:N0}'}" Width="Auto"/>
+                                <DataGridTextColumn Header="Time" Binding="{Binding SaleDate, StringFormat='dd/MM HH:mm'}" Width="Auto"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </Border>
+
+
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

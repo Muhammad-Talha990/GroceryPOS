@@ -99,7 +99,11 @@ namespace GroceryPOS.Data.Repositories
 
             // Get bill header
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Bill WHERE bill_id = @id;";
+            cmd.CommandText = @"
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt
+                FROM Bill b
+                LEFT JOIN User u ON b.UserId = u.Id
+                WHERE b.bill_id = @id;";
             cmd.Parameters.AddWithValue("@id", billId);
 
             Bill? bill = null;
@@ -121,7 +125,11 @@ namespace GroceryPOS.Data.Repositories
             var bills = new List<Bill>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Bill ORDER BY BillDateTime DESC;";
+            cmd.CommandText = @"
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt
+                FROM Bill b
+                LEFT JOIN User u ON b.UserId = u.Id
+                ORDER BY b.BillDateTime DESC;";
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -144,9 +152,11 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT * FROM Bill 
-                WHERE BillDateTime >= @from AND BillDateTime < @to 
-                ORDER BY BillDateTime DESC;
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt
+                FROM Bill b 
+                LEFT JOIN User u ON b.UserId = u.Id
+                WHERE b.BillDateTime >= @from AND b.BillDateTime < @to 
+                ORDER BY b.BillDateTime DESC;
             ";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -246,7 +256,7 @@ namespace GroceryPOS.Data.Repositories
 
         private static Bill MapBill(SqliteDataReader reader)
         {
-            return new Bill
+            var bill = new Bill
             {
                 BillId         = reader.GetInt32(reader.GetOrdinal("bill_id")),
                 BillDateTime   = reader.GetString(reader.GetOrdinal("BillDateTime")),
@@ -258,6 +268,21 @@ namespace GroceryPOS.Data.Repositories
                 ChangeGiven    = reader.IsDBNull(reader.GetOrdinal("ChangeGiven")) ? 0 : reader.GetDouble(reader.GetOrdinal("ChangeGiven")),
                 UserId         = reader.IsDBNull(reader.GetOrdinal("UserId")) ? null : reader.GetInt32(reader.GetOrdinal("UserId"))
             };
+
+            if (bill.UserId.HasValue && !reader.IsDBNull(reader.GetOrdinal("Username")))
+            {
+                bill.User = new User
+                {
+                    Id       = bill.UserId.Value,
+                    Username = reader.GetString(reader.GetOrdinal("Username")),
+                    FullName = reader.GetString(reader.GetOrdinal("FullName")),
+                    Role     = reader.GetString(reader.GetOrdinal("Role")),
+                    IsActive = reader.GetInt32(reader.GetOrdinal("IsActive")) != 0,
+                    CreatedAt = DateTime.TryParse(reader.GetString(reader.GetOrdinal("CreatedAt")), out var dt) ? dt : DateTime.Now
+                };
+            }
+
+            return bill;
         }
     }
 }

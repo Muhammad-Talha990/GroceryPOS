@@ -44,5 +44,8 @@ namespace GroceryPOS.Models
 
         /// <summary>Navigation — line items on this bill (not stored in DB).</summary>
         public List<BillDescription> Items { get; set; } = new();
+
+        /// <summary>Navigation — user/cashier who processed this bill.</summary>
+        public User? User { get; set; }
     }
 }

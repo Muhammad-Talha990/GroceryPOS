@@ -1,0 +1,177 @@
+<UserControl x:Class="GroceryPOS.Views.ProductsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:GroceryPOS.Converters"
+             Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
+    </UserControl.Resources>
+
+    <Grid Margin="30,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="📦 Product Management" FontSize="24" FontWeight="Bold"
+                       Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
+            <TextBlock Text="Add, edit, and manage your product inventory" FontSize="13"
+                       Foreground="{DynamicResource SubTextBrush}"/>
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="340"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Product List -->
+            <Border Grid.Column="0" Style="{DynamicResource CardBorder}" Margin="0,0,16,0">
+                <DockPanel>
+                    <!-- Search bar -->
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
+                        <TextBox Style="{DynamicResource ModernTextBox}"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Tag="🔍 Search by name, barcode, or category..."/>
+                    </Grid>
+
+                    <!-- Data Grid -->
+                    <DataGrid ItemsSource="{Binding Products}"
+                              SelectedItem="{Binding SelectedProduct}"
+                              Style="{DynamicResource ModernDataGrid}"
+                              ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}"
+                              CellStyle="{DynamicResource ModernDataGridCell}">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow" BasedOn="{StaticResource ModernDataGridRow}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsLowStock}" Value="True">
+                                        <Setter Property="Background" Value="#FFF1F0"/>
+                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Product Name" Binding="{Binding Description}" Width="2*"/>
+                            <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="1.2*"/>
+                            <DataGridTextColumn Header="Quantity" Binding="{Binding StockQuantity}" Width="80">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Min" Binding="{Binding MinStockThreshold}" Width="60">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource SubTextBrush}"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Sale Price" Binding="{Binding SalePrice, StringFormat='Rs.{0:N0}'}" Width="Auto"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+
+            <!-- Product Form -->
+            <Border Grid.Column="1" Style="{DynamicResource CardBorder}" Padding="0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="18,18,12,18">
+                    <StackPanel>
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,18">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="➕ Add Product"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                            <Setter Property="Text" Value="✏️ Edit Product"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Name -->
+                        <TextBlock Text="📌 Product Name *" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                        <!-- Barcode -->
+                        <TextBlock Text="🏷️ Barcode" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormBarcode, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+
+                        <!-- Category -->
+                        <TextBlock Text="📂 Category *" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                        <ComboBox Style="{DynamicResource ModernComboBox}"
+                                  ItemsSource="{Binding Categories}"
+                                  IsEditable="True"
+                                  Text="{Binding FormCategory}"
+                                  Margin="0,0,0,8"/>
+
+                        <!-- Prices -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="💰 Cost (Rs.)" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormCostPrice, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="💵 Sale (Rs.)" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormSalePrice, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Stock Info -->
+                        <TextBlock Text="📊 Inventory Status" FontSize="13" Foreground="{DynamicResource PrimaryBrush}" FontWeight="SemiBold" Margin="0,8,0,10"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="📦 Quantity" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormStockQuantity, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="⚠️ Min. Threshold" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormMinStockThreshold, UpdateSourceTrigger=PropertyChanged}"/>
+                            </StackPanel>
+                        </Grid>
+
+
+
+                        <!-- Status Message -->
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="12" Margin="0,0,0,14" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource AccentBrush}"/>
+
+                        <!-- Buttons -->
+                        <Button Content="➕  Add Product" Style="{DynamicResource PrimaryButton}"
+                                Command="{Binding AddCommand}" Margin="0,0,0,8"
+                                Visibility="{Binding IsEditing, Converter={StaticResource InvBoolToVis}}"/>
+
+                        <Button Content="💾  Update Product" Style="{DynamicResource AccentButton}"
+                                Command="{Binding UpdateCommand}" Margin="0,0,0,8"
+                                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"/>
+
+                        <Button Content="🗑️  Delete Product" Style="{DynamicResource DangerButton}"
+                                Command="{Binding DeleteCommand}" Margin="0,0,0,8"
+                                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"/>
+
+                        <Button Content="🔄  Clear Form" Style="{DynamicResource PrimaryButton}"
+                                Command="{Binding ClearFormCommand}" Background="#607D8B"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

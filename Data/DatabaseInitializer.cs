@@ -242,8 +242,8 @@ namespace GroceryPOS.Data
                 using var cmd = conn.CreateCommand();
                 // Using INSERT OR IGNORE to safely add only new records
                 cmd.CommandText = @"
-                    INSERT OR IGNORE INTO Item (itemId, Description, CostPrice, SalePrice, ItemCategory)
-                    VALUES (@id, @desc, @cost, @sale, @cat);
+                    INSERT OR IGNORE INTO Item (itemId, Description, CostPrice, SalePrice, ItemCategory, StockQuantity)
+                    VALUES (@id, @desc, @cost, @sale, @cat, 100);
                 ";
                 cmd.Parameters.AddWithValue("@id", barcode);
                 cmd.Parameters.AddWithValue("@desc", desc);
@@ -256,13 +256,6 @@ namespace GroceryPOS.Data
 
             if (addedCount > 0)
                 AppLogger.Info($"SeedItems: Successfully added {addedCount} new default items/categories.");
-
-            // Update default stock for existing items if they are at 0 (initial seed)
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = "UPDATE Item SET StockQuantity = 100 WHERE StockQuantity = 0;";
-                cmd.ExecuteNonQuery();
-            }
         }
 
         // ────────────────────────────────────────────

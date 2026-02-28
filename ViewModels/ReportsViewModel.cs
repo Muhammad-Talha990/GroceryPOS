@@ -23,14 +23,22 @@ namespace GroceryPOS.ViewModels
         public DateTime FromDate
         {
             get => _fromDate;
-            set { SetProperty(ref _fromDate, value); }
+            set 
+            { 
+                if (SetProperty(ref _fromDate, value))
+                    GenerateReport();
+            }
         }
 
-        private DateTime _toDate = DateTime.Today.AddDays(1);
+        private DateTime _toDate = DateTime.Today;
         public DateTime ToDate
         {
             get => _toDate;
-            set { SetProperty(ref _toDate, value); }
+            set 
+            { 
+                if (SetProperty(ref _toDate, value))
+                    GenerateReport();
+            }
         }
 
         private string _selectedReportType = "Daily";
@@ -80,45 +88,59 @@ namespace GroceryPOS.ViewModels
                 {
                     ShowSalesGrid = true;
                     ShowProductGrid = false;
-                    var dailySales = _reportService.GetDailyReport(FromDate);
-                    AppLogger.Info($"Daily report found {dailySales.Count} records.");
-                    foreach (var s in dailySales)
-                        SalesReport.Add(s);
-                    TotalRevenue = dailySales.Sum(s => s.GrandTotal);
-                    TotalSalesCount = dailySales.Count;
+                    // Daily shortcut: just use FromDate for that day
+                    var start = FromDate.Date;
+                    var end = start.AddDays(1);
+                    var data = _reportService.GetByDateRange(start, end);
+                    foreach (var s in data) SalesReport.Add(s);
+                    TotalRevenue = data.Sum(s => s.GrandTotal);
+                    TotalSalesCount = data.Count;
                 }
                 else if (string.Equals(type, "Weekly", StringComparison.OrdinalIgnoreCase))
                 {
                     ShowSalesGrid = true;
                     ShowProductGrid = false;
-                    var weeklySales = _reportService.GetWeeklyReport(FromDate);
-                    AppLogger.Info($"Weekly report found {weeklySales.Count} records.");
-                    foreach (var s in weeklySales)
-                        SalesReport.Add(s);
-                    TotalRevenue = weeklySales.Sum(s => s.GrandTotal);
-                    TotalSalesCount = weeklySales.Count;
+                    // Weekly shortcut: 7 days from FromDate
+                    var start = FromDate.Date;
+                    var end = start.AddDays(7);
+                    var data = _reportService.GetByDateRange(start, end);
+                    foreach (var s in data) SalesReport.Add(s);
+                    TotalRevenue = data.Sum(s => s.GrandTotal);
+                    TotalSalesCount = data.Count;
                 }
                 else if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
                 {
                     ShowSalesGrid = true;
                     ShowProductGrid = false;
-                    var monthlySales = _reportService.GetMonthlyReport(FromDate.Year, FromDate.Month);
-                    AppLogger.Info($"Monthly report found {monthlySales.Count} records.");
-                    foreach (var s in monthlySales)
-                        SalesReport.Add(s);
-                    TotalRevenue = monthlySales.Sum(s => s.GrandTotal);
-                    TotalSalesCount = monthlySales.Count;
+                    // Monthly shortcut: the whole month of FromDate
+                    var start = new DateTime(FromDate.Year, FromDate.Month, 1);
+                    var end = start.AddMonths(1);
+                    var data = _reportService.GetByDateRange(start, end);
+                    foreach (var s in data) SalesReport.Add(s);
+                    TotalRevenue = data.Sum(s => s.GrandTotal);
+                    TotalSalesCount = data.Count;
+                }
+                else if (string.Equals(type, "Custom Range", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(type))
+                {
+                    ShowSalesGrid = true;
+                    ShowProductGrid = false;
+                    var start = FromDate.Date;
+                    var end = ToDate.Date.AddDays(1);
+                    var data = _reportService.GetByDateRange(start, end);
+                    foreach (var s in data) SalesReport.Add(s);
+                    TotalRevenue = data.Sum(s => s.GrandTotal);
+                    TotalSalesCount = data.Count;
                 }
                 else if (string.Equals(type, "Product-wise", StringComparison.OrdinalIgnoreCase))
                 {
                     ShowSalesGrid = false;
                     ShowProductGrid = true;
-                    var productReport = _reportService.GetProductWiseReport(FromDate, ToDate);
-                    AppLogger.Info($"Product-wise report found {productReport.Count} items.");
-                    foreach (var r in productReport)
-                        ProductReport.Add(r);
-                    TotalRevenue = productReport.Sum(r => r.TotalRevenue);
-                    TotalSalesCount = productReport.Sum(r => r.QuantitySold);
+                    var start = FromDate.Date;
+                    var end = ToDate.Date.AddDays(1);
+                    var data = _reportService.GetProductWiseReport(start, end);
+                    foreach (var r in data) ProductReport.Add(r);
+                    TotalRevenue = data.Sum(r => r.TotalRevenue);
+                    TotalSalesCount = data.Sum(r => r.QuantitySold);
                 }
                 else
                 {

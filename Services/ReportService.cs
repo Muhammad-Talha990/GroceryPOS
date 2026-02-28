@@ -33,6 +33,9 @@ namespace GroceryPOS.Services
             _billRepo = billRepo;
         }
 
+        /// <summary>Delegates straight to repository for custom range sales.</summary>
+        public List<Bill> GetByDateRange(DateTime from, DateTime to) => _billRepo.GetByDateRange(from, to);
+
         /// <summary>Gets all bills for a specific date.</summary>
         public List<Bill> GetDailyReport(DateTime date)
         {
@@ -86,8 +89,8 @@ namespace GroceryPOS.Services
                 {
                     ItemId          = reader.GetString(reader.GetOrdinal("ItemId")),
                     ItemDescription = reader.GetString(reader.GetOrdinal("ItemDesc")),
-                    QuantitySold    = reader.GetInt32(reader.GetOrdinal("TotalQty")),
-                    TotalRevenue    = reader.GetDouble(reader.GetOrdinal("TotalRevenue"))
+                    QuantitySold    = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("TotalQty"))),
+                    TotalRevenue    = Convert.ToDouble(reader.GetValue(reader.GetOrdinal("TotalRevenue")))
                 });
             }
 

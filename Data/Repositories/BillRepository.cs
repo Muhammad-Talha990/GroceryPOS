@@ -240,7 +240,7 @@ namespace GroceryPOS.Data.Repositories
                     Id              = reader.GetInt32(reader.GetOrdinal("id")),
                     BillId          = reader.GetInt32(reader.GetOrdinal("Bill_id")),
                     ItemId          = reader.GetString(reader.GetOrdinal("ItemId")),
-                    Quantity        = reader.GetInt32(reader.GetOrdinal("Quantity")),
+                    Quantity        = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("Quantity"))),
                     UnitPrice       = reader.GetDouble(reader.GetOrdinal("UnitPrice")),
                     TotalPrice      = reader.GetDouble(reader.GetOrdinal("TotalPrice")),
                     ItemDescription = reader.GetString(reader.GetOrdinal("ItemDesc"))

@@ -4,7 +4,8 @@
         xmlns:helpers="clr-namespace:GroceryPOS.Helpers"
         Title="GroceryPOS — Login" Height="550" Width="420"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
-        WindowStyle="None" AllowsTransparency="True" Background="Transparent">
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        FocusManager.FocusedElement="{Binding ElementName=UsernameTextBox}">
 
     <Border CornerRadius="16" Background="{DynamicResource BgBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
@@ -43,7 +44,7 @@
                 <TextBlock Text="Username" FontSize="14" FontWeight="SemiBold"
                            Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"
                            FontFamily="{DynamicResource AppFont}"/>
-                <TextBox Style="{DynamicResource ModernTextBox}"
+                <TextBox x:Name="UsernameTextBox" Style="{DynamicResource ModernTextBox}"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          Padding="14,12" Margin="0,0,0,20"/>
 

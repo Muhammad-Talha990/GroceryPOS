@@ -65,11 +65,13 @@ namespace GroceryPOS.ViewModels
         public bool ShowProductGrid { get => _showProductGrid; set => SetProperty(ref _showProductGrid, value); }
 
         public ICommand GenerateReportCommand { get; }
+        public ICommand ExportReportCommand { get; }
 
         public ReportsViewModel(ReportService reportService)
         {
             _reportService = reportService;
             GenerateReportCommand = new RelayCommand(GenerateReport);
+            ExportReportCommand = new RelayCommand(ExportReport);
             GenerateReport();
         }
 
@@ -150,6 +152,49 @@ namespace GroceryPOS.ViewModels
             catch (Exception ex)
             {
                 AppLogger.Error("Error generating report", ex);
+            }
+        }
+        private void ExportReport()
+        {
+            try
+            {
+                if (ShowSalesGrid && SalesReport.Count == 0) return;
+                if (ShowProductGrid && ProductReport.Count == 0) return;
+
+                var sfd = new Microsoft.Win32.SaveFileDialog
+                {
+                    Filter = "CSV files (*.csv)|*.csv",
+                    FileName = $"Report_{SelectedReportType}_{DateTime.Now:yyyyMMdd_HHmm}.csv"
+                };
+
+                if (sfd.ShowDialog() == true)
+                {
+                    var csv = new System.Text.StringBuilder();
+
+                    if (ShowSalesGrid)
+                    {
+                        csv.AppendLine("Invoice #,Cashier,Sub Total,Discount,Tax,Grand Total,Date/Time");
+                        foreach (var b in SalesReport)
+                        {
+                            csv.AppendLine($"{b.InvoiceNumber},{b.User?.FullName ?? "Unknown"},{b.SubTotal},{b.DiscountAmount},{b.TaxAmount},{b.GrandTotal},{b.SaleDate:yyyy-MM-dd HH:mm}");
+                        }
+                    }
+                    else
+                    {
+                        csv.AppendLine("Product Name,Quantity Sold,Total Revenue");
+                        foreach (var p in ProductReport)
+                        {
+                            csv.AppendLine($"\"{p.ItemDescription}\",{p.QuantitySold},{p.TotalRevenue}");
+                        }
+                    }
+
+                    System.IO.File.WriteAllText(sfd.FileName, csv.ToString());
+                    AppLogger.Info($"Report exported to {sfd.FileName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Error exporting report", ex);
             }
         }
     }

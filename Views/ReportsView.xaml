@@ -49,21 +49,21 @@
                     </ComboBox>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Margin="0,0,16,0">
-                    <TextBlock Text="From Date" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                <StackPanel Grid.Column="1" Margin="0,0,16,0"
+                            Visibility="{Binding IsFromDateVisible, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding FromDateLabel}" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                     <DatePicker SelectedDate="{Binding FromDate}" Width="150" FontSize="13"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Margin="0,0,16,0">
+                <StackPanel Grid.Column="2" Margin="0,0,16,0"
+                            Visibility="{Binding IsToDateVisible, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="To Date" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                     <DatePicker SelectedDate="{Binding ToDate}" Width="150" FontSize="13"/>
                 </StackPanel>
 
-                <Button Grid.Column="3" Content="📊 Generate" Style="{DynamicResource PrimaryButton}"
-                        Command="{Binding GenerateReportCommand}" VerticalAlignment="Bottom" Padding="20,10" Margin="0,0,8,0"/>
-
                 <Button Grid.Column="4" Content="📥 Export CSV" Style="{DynamicResource PrimaryButton}"
-                        Command="{Binding ExportReportCommand}" VerticalAlignment="Bottom" Padding="20,10"/>
+                        Command="{Binding ExportReportCommand}" VerticalAlignment="Bottom" Padding="20,10"
+                        Margin="0,0,16,0"/>
 
                 <!-- Summary -->
                 <StackPanel Grid.Column="5" HorizontalAlignment="Right" Margin="0,0,12,0">

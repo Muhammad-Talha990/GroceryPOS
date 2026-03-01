@@ -246,9 +246,12 @@ namespace GroceryPOS.ViewModels
 
         private void LoadItems()
         {
-            ItemList.Clear();
-            foreach (var item in _itemService.GetAllItems())
-                ItemList.Add(item);
+            Dispatch(() =>
+            {
+                ItemList.Clear();
+                foreach (var item in _itemService.GetAllItems())
+                    ItemList.Add(item);
+            });
         }
 
         private void RecalculateTotal()

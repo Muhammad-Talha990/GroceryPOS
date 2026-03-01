@@ -62,5 +62,24 @@ namespace GroceryPOS.Data
 
             return connection;
         }
+
+        /// <summary>
+        /// Returns diagnostic information about the current database.
+        /// </summary>
+        public static string GetDatabaseDiagnostics()
+        {
+            try
+            {
+                using var conn = GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(*) FROM Bill;";
+                var count = cmd.ExecuteScalar();
+                return $"[DB DIAGNOSTIC] Path: {DbPath} | Total Bills: {count}";
+            }
+            catch (Exception ex)
+            {
+                return $"[DB DIAGNOSTIC ERROR] Path: {DbPath} | Error: {ex.Message}";
+            }
+        }
     }
 }

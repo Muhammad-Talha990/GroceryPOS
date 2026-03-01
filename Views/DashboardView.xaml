@@ -83,8 +83,39 @@
                                   CellStyle="{DynamicResource ModernDataGridCell}"
                                   MaxHeight="300">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Invoice" Binding="{Binding InvoiceNumber}" Width="*"/>
-                                <DataGridTextColumn Header="Total" Binding="{Binding GrandTotal, StringFormat='Rs.{0:N0}'}" Width="Auto"/>
+                                <DataGridTextColumn Header="Invoice" Binding="{Binding InvoiceNumber}" Width="70"/>
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Padding" Value="10,0"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Status}" Value="*** RETURN BILL ***">
+                                                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTemplateColumn Header="Total" Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding GrandTotal, StringFormat='Rs.{0:N0}'}" VerticalAlignment="Center" Padding="10,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <!-- Color-code returns based on Status -->
+                                                            <DataTrigger Binding="{Binding Status}" Value="*** RETURN BILL ***">
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="Time" Binding="{Binding SaleDate, StringFormat='dd/MM HH:mm'}" Width="Auto"/>
                             </DataGrid.Columns>
                         </DataGrid>

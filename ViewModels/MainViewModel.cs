@@ -95,8 +95,11 @@ namespace GroceryPOS.ViewModels
                 "Reports"   => _serviceProvider.GetRequiredService<ReportsViewModel>(),
                 "Backup"    => _serviceProvider.GetRequiredService<BackupViewModel>(),
                 "SupplierBills" => _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
+                "Returns" => _serviceProvider.GetRequiredService<ReturnViewModel>(),
+                "BillUpdate" => _serviceProvider.GetRequiredService<UpdateBillViewModel>(),
                 _ => _serviceProvider.GetRequiredService<DashboardViewModel>()
             };
+
         }
 
         private void ExecuteLogout()

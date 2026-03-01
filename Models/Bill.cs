@@ -12,8 +12,8 @@ namespace GroceryPOS.Models
         /// <summary>Auto-increment primary key.</summary>
         public int BillId { get; set; }
 
-        /// <summary>Date/time of the bill in ISO 8601 format.</summary>
-        public string BillDateTime { get; set; } = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        /// <summary>Date/time of the bill.</summary>
+        public DateTime BillDateTime { get; set; } = DateTime.Now;
 
         /// <summary>Sum of all line item totals before discount/tax.</summary>
         public double SubTotal { get; set; }
@@ -40,12 +40,27 @@ namespace GroceryPOS.Models
         public string InvoiceNumber => BillId.ToString("D5");
 
         /// <summary>Parsed DateTime for XAML formatting.</summary>
-        public DateTime SaleDate => DateTime.TryParse(BillDateTime, out var dt) ? dt : DateTime.MinValue;
+        public DateTime SaleDate => BillDateTime;
 
         /// <summary>Navigation — line items on this bill (not stored in DB).</summary>
         public List<BillDescription> Items { get; set; } = new();
 
         /// <summary>Navigation — user/cashier who processed this bill.</summary>
         public User? User { get; set; }
+
+        /// <summary>Current status of the bill (e.g., Completed, Cancelled, Replaced).</summary>
+        public string Status { get; set; } = "Completed";
+
+        /// <summary>Reference to the original bill ID for corrections (legacy).</summary>
+        public int? ReferenceBillId { get; set; }
+
+        /// <summary>Professional Type: "Sale" or "Return".</summary>
+        public string Type { get; set; } = "Sale";
+
+        /// <summary>FK to parent Bill for returns.</summary>
+        public int? ParentBillId { get; set; }
+
+        /// <summary>Helper to check if this is a return bill.</summary>
+        public bool IsReturn => Type == "Return";
     }
 }

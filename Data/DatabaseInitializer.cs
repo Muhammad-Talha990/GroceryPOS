@@ -102,6 +102,23 @@ namespace GroceryPOS.Data
                     ");
 
                     // ══════════════════════════════════════════
+                    //  TABLE 7: BILL_RETURNS (Return tracking)
+                    // ══════════════════════════════════════════
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS BILL_RETURNS (
+                            Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                            bill_id             INTEGER NOT NULL,
+                            product_id          TEXT NOT NULL,
+                            return_quantity     INTEGER NOT NULL,
+                            original_bill_date  TEXT NOT NULL,
+                            return_date         TEXT NOT NULL,
+                            return_bill_id      TEXT NOT NULL,
+                            FOREIGN KEY (bill_id)    REFERENCES Bill(bill_id) ON DELETE CASCADE,
+                            FOREIGN KEY (product_id) REFERENCES Item(itemId)  ON DELETE RESTRICT
+                        );
+                    ");
+
+                    // ══════════════════════════════════════════
                     //  INDEXES for query optimization
                     // ══════════════════════════════════════════
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Item_ItemCategory       ON Item(ItemCategory);");
@@ -112,6 +129,8 @@ namespace GroceryPOS.Data
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_ProductId         ON stock(product_id);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_BillId            ON stock(bill_id);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_Date              ON stock(system_date);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_BillId      ON BILL_RETURNS(bill_id);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_ProductId   ON BILL_RETURNS(product_id);");
 
                     // ── Migration: Add StockQuantity and MinStockThreshold if they don't exist ──
                     AddColumnIfNotExists(conn, "Item", "StockQuantity", "REAL NOT NULL DEFAULT 0");
@@ -119,6 +138,18 @@ namespace GroceryPOS.Data
 
                     // ── Migration: Add image_path to stock table if it doesn't exist ──
                     AddColumnIfNotExists(conn, "stock", "image_path", "TEXT");
+
+                    // ── Migration: Add Status and ReferenceBillId to Bill table ──
+                    AddColumnIfNotExists(conn, "Bill", "Status", "TEXT DEFAULT 'Completed'");
+                    AddColumnIfNotExists(conn, "Bill", "ReferenceBillId", "INTEGER");
+
+                    // ── Migration: Professional Return System (Type and ParentBillId) ──
+                    AddColumnIfNotExists(conn, "Bill", "Type", "TEXT DEFAULT 'Sale'");
+                    AddColumnIfNotExists(conn, "Bill", "ParentBillId", "INTEGER");
+
+                    // Sync old status to type if newly added
+                    Execute(conn, "UPDATE Bill SET Type = 'Return' WHERE Status = '*** RETURN BILL ***' AND Type = 'Sale';");
+                    Execute(conn, "UPDATE Bill SET ParentBillId = ReferenceBillId WHERE ReferenceBillId IS NOT NULL AND ParentBillId IS NULL;");
 
                     // ── Migration: Remove stale foreign keys from stock table ──
                     MigrateStockTableIfNeeded(conn);

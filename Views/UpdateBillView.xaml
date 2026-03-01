@@ -1,0 +1,114 @@
+<UserControl x:Class="GroceryPOS.Views.UpdateBillView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
+    <Grid Margin="30,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="✏️ Bill Correction / Update" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+            <TextBlock Text="Edit and correct mistakes in previous bills" FontSize="14" Foreground="{DynamicResource SubTextBrush}" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Search Bar -->
+        <Border Grid.Row="1" Style="{DynamicResource CardBorder}" Padding="16" Margin="0,0,0,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Original Bill ID:" VerticalAlignment="Center" Margin="0,0,12,0" FontWeight="SemiBold"/>
+                <TextBox Grid.Column="1" Style="{DynamicResource ModernTextBox}" Text="{Binding BillIdInput, UpdateSourceTrigger=PropertyChanged}" FontSize="16">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding LoadBillCommand}"/>
+                    </TextBox.InputBindings>
+                </TextBox>
+                <Button Grid.Column="2" Content="🔍 Load Bill" Style="{DynamicResource PrimaryButton}" Command="{Binding LoadBillCommand}" Margin="12,0,0,0" Padding="20,0"/>
+                
+                <TextBlock Grid.Column="3" Text="{Binding StatusMessage}" VerticalAlignment="Center" HorizontalAlignment="Right" FontWeight="Medium"/>
+            </Grid>
+        </Border>
+
+        <!-- Edit Area -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="300"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Items List -->
+            <Border Grid.Column="0" Style="{DynamicResource CardBorder}" Padding="0" Margin="0,0,20,0">
+                <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" CanUserAddRows="False" Style="{DynamicResource ModernDataGrid}"
+                          ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}" RowStyle="{DynamicResource ModernDataGridRow}" CellStyle="{DynamicResource ModernDataGridCell}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Product" Binding="{Binding ItemDescription}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, StringFormat='Rs.{0:N0}'}" Width="100" IsReadOnly="True"/>
+                        <DataGridTemplateColumn Header="Qty" Width="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, StringFormat='N0'}" Style="{DynamicResource ModernTextBox}" HorizontalContentAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Total" Binding="{Binding TotalPrice, StringFormat='Rs.{0:N0}'}" Width="100" IsReadOnly="True"/>
+                        <DataGridTemplateColumn Width="50">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="🗑️" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource DangerBrush}" 
+                                            Command="{Binding DataContext.RemoveItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Cursor="Hand"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <!-- Totals / Correction Panel -->
+            <Border Grid.Column="1" Style="{DynamicResource CardBorder}" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="Corrections" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
+                        
+                        <TextBlock Text="Sub Total" FontSize="13" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="{Binding SubTotal, StringFormat='Rs.{0:N2}'}" FontSize="17" FontWeight="SemiBold" Margin="0,2,0,12"/>
+
+                        <TextBlock Text="Discount (Rs.)" FontSize="12" Margin="0,0,0,3"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding Discount, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
+
+                        <TextBlock Text="Tax (Rs.)" FontSize="12" Margin="0,0,0,3"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding Tax, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10"/>
+
+                        <Separator Margin="0,5,0,12"/>
+
+                        <TextBlock Text="GRAND TOTAL" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"/>
+                        <TextBlock Text="{Binding GrandTotal, StringFormat='Rs.{0:N2}'}" FontSize="22" FontWeight="Bold" Margin="0,2,0,15"/>
+
+                        <TextBlock Text="Cash Received (Rs.)" FontSize="12" Margin="0,0,0,3"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding CashReceived, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,20" FontSize="16" FontWeight="Bold"/>
+
+                        <StackPanel Orientation="Vertical">
+                            <Button Content="💾 Save Corrected Bill" Style="{DynamicResource PrimaryButton}" Command="{Binding UpdateBillCommand}" Padding="0,12" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <Button Content="✖ Clear / Cancel" Style="{DynamicResource SecondaryButton}" Command="{Binding ClearFormCommand}" Padding="0,10" FontSize="13"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <Border Grid.Row="3" Margin="0,20,0,0">
+            <TextBlock Text="* Original bill will be marked as 'Replaced' and a new bill will be generated." FontSize="12" FontStyle="Italic" Foreground="{DynamicResource SubTextBrush}"/>
+        </Border>
+    </Grid>
+</UserControl>

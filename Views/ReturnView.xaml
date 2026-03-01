@@ -1,0 +1,162 @@
+<UserControl x:Class="GroceryPOS.Views.ReturnView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:converters="clr-namespace:GroceryPOS.Converters"
+             mc:Ignorable="d" 
+             Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
+    <UserControl.Resources>
+        <converters:StatusColorConverter x:Key="StatusColorConverter"/>
+        <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+    </UserControl.Resources>
+    
+    <Grid Margin="30,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*" MinHeight="200"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header (Row 0) -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+            <TextBlock Text="🔄 Bill Item Return" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+            <TextBlock Text="Process product returns from previous bills" FontSize="14" Foreground="{DynamicResource SubTextBrush}" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Search Bar (Row 1) -->
+        <Border Grid.Row="1" Style="{DynamicResource CardBorder}" Padding="16" Margin="0,0,0,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Enter Bill ID:" VerticalAlignment="Center" Margin="0,0,12,0" FontWeight="SemiBold"/>
+                <TextBox Grid.Column="1" Style="{DynamicResource ModernTextBox}" Text="{Binding BillIdInput, UpdateSourceTrigger=PropertyChanged}" FontSize="16">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding SearchCommand}"/>
+                    </TextBox.InputBindings>
+                </TextBox>
+                <Button Grid.Column="2" Content="🔍 Search Bill" Style="{DynamicResource PrimaryButton}" Command="{Binding SearchCommand}" Margin="12,0,0,0" Padding="20,0"/>
+                
+                <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" 
+                               Foreground="{Binding StatusMessage, Converter={StaticResource StatusColorConverter}}" FontWeight="Medium"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Items Grid (Row 2) -->
+        <GroupBox Grid.Row="2" Header="Items available for return" Foreground="{DynamicResource SubTextBrush}" FontWeight="SemiBold" Margin="0,0,0,10" VerticalAlignment="Stretch">
+            <Border Style="{DynamicResource CardBorder}" Padding="0">
+                <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" CanUserAddRows="False" Style="{DynamicResource ModernDataGrid}"
+                          ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}" CellStyle="{DynamicResource ModernDataGridCell}"
+                          VerticalAlignment="Top" MaxHeight="350" RowHeight="38">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource ModernDataGridRow}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding RemainingQuantity}" Value="0">
+                                    <Setter Property="Background" Value="#1AEE4444"/> <!-- Very subtle red tint -->
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Product Description" Binding="{Binding Description}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="150" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Sold Qty" Binding="{Binding OriginalQuantity}" Width="100" IsReadOnly="True">
+                             <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Returned" Binding="{Binding AlreadyReturned}" Width="100" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Remaining" Binding="{Binding RemainingQuantity}" Width="110" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RemainingQuantity}" Value="0">
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTemplateColumn Header="Return Qty" Width="120">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBox Text="{Binding ReturnQuantity, UpdateSourceTrigger=PropertyChanged}" 
+                                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                             FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"
+                                             Background="Transparent" BorderThickness="1" 
+                                             BorderBrush="{DynamicResource PrimaryBrush}"
+                                             Padding="4,2" Margin="4,2"
+                                             VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+        </GroupBox>
+
+        <!-- History Title (Row 3) -->
+        <TextBlock Grid.Row="3" Text="📜 Previous Returns for this Bill" FontSize="16" FontWeight="Bold" Margin="0,15,0,8"
+                   Visibility="{Binding ReturnHistory.Count, Converter={StaticResource CountToVisibilityConverter}}"
+                   xmlns:conv="clr-namespace:GroceryPOS.Converters"/>
+
+        <!-- Return History (Row 4) -->
+        <Border Grid.Row="4" Style="{DynamicResource CardBorder}" Padding="0" Margin="0,0,0,10"
+                Visibility="{Binding ReturnHistory.Count, Converter={StaticResource CountToVisibilityConverter}}">
+            <DataGrid ItemsSource="{Binding ReturnHistory}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                      Style="{DynamicResource ModernDataGrid}" MaxHeight="150"
+                      ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}" RowStyle="{DynamicResource ModernDataGridRow}" CellStyle="{DynamicResource ModernDataGridCell}">
+                 <DataGrid.Columns>
+                    <DataGridTextColumn Header="Return ID" Binding="{Binding ReturnBillId}" Width="150">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Date/Time" Binding="{Binding ReturnDate}" Width="160"/>
+                    <DataGridTextColumn Header="Item" Binding="{Binding ProductId}" Width="150"/>
+                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="60">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Center"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Product Description" Binding="{Binding ProductDescription}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Footer Actions (Row 5) -->
+        <Border Grid.Row="5" Margin="0,20,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="✖ Clear" Style="{DynamicResource SecondaryButton}" Width="100" Margin="0,0,12,0" Command="{Binding ClearFormCommand}"/>
+                <Button Content="🔄 Process Return" Style="{DynamicResource PrimaryButton}" Width="180" Height="45" Command="{Binding ProcessReturnCommand}" FontSize="15" FontWeight="Bold"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

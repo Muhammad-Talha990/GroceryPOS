@@ -79,7 +79,7 @@ namespace GroceryPOS.Services
             // ── Build Bill object ──
             var bill = new Bill
             {
-                BillDateTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                BillDateTime = DateTime.Now,
                 SubTotal = subTotal,
                 DiscountAmount = discountAmount,
                 TaxAmount = taxAmount,

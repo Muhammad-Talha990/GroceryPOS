@@ -62,13 +62,16 @@ namespace GroceryPOS.ViewModels
             TotalProducts = _itemService.GetTotalItemCount();
             LowStockCount = _stockService.GetLowStockCount();
 
-            RecentSales.Clear();
-            foreach (var bill in _billService.GetTodayBills().Take(10))
-                RecentSales.Add(bill);
+            Dispatch(() =>
+            {
+                RecentSales.Clear();
+                foreach (var bill in _billService.GetTodayBills().Take(10))
+                    RecentSales.Add(bill);
 
-            LowStockItems.Clear();
-            foreach (var item in _stockService.GetLowStockItems().Take(10))
-                LowStockItems.Add(item);
+                LowStockItems.Clear();
+                foreach (var item in _stockService.GetLowStockItems().Take(10))
+                    LowStockItems.Add(item);
+            });
         }
     }
 }

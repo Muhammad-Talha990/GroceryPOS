@@ -33,52 +33,9 @@ namespace GroceryPOS.Data.Repositories
 
             try
             {
-                // ── Step 1: Insert Bill header ──
-                using var billCmd = conn.CreateCommand();
-                billCmd.Transaction = txn;
-                billCmd.CommandText = @"
-                    INSERT INTO Bill (BillDateTime, SubTotal, DiscountAmount, TaxAmount, GrandTotal, CashReceived, ChangeGiven, UserId)
-                    VALUES (@dt, @sub, @disc, @tax, @grand, @cash, @change, @uid);
-                    SELECT last_insert_rowid();
-                ";
-                billCmd.Parameters.AddWithValue("@dt", bill.BillDateTime);
-                billCmd.Parameters.AddWithValue("@sub", bill.SubTotal);
-                billCmd.Parameters.AddWithValue("@disc", bill.DiscountAmount);
-                billCmd.Parameters.AddWithValue("@tax", bill.TaxAmount);
-                billCmd.Parameters.AddWithValue("@grand", bill.GrandTotal);
-                billCmd.Parameters.AddWithValue("@cash", bill.CashReceived);
-                billCmd.Parameters.AddWithValue("@change", bill.ChangeGiven);
-                billCmd.Parameters.AddWithValue("@uid", bill.UserId.HasValue ? (object)bill.UserId.Value : DBNull.Value);
-
-                bill.BillId = Convert.ToInt32(billCmd.ExecuteScalar());
-
-                // ── Step 2: Insert BillDescription items ──
-                foreach (var item in items)
-                {
-                    item.BillId = bill.BillId;
-
-                    using var itemCmd = conn.CreateCommand();
-                    itemCmd.Transaction = txn;
-                    itemCmd.CommandText = @"
-                        INSERT INTO BillDescription (Bill_id, ItemId, Quantity, UnitPrice, TotalPrice)
-                        VALUES (@billId, @itemId, @qty, @price, @total);
-                        
-                        UPDATE Item SET StockQuantity = StockQuantity - @qty 
-                        WHERE itemId = @itemId;
-                    ";
-                    itemCmd.Parameters.AddWithValue("@billId", item.BillId);
-                    itemCmd.Parameters.AddWithValue("@itemId", item.ItemId);
-                    itemCmd.Parameters.AddWithValue("@qty", item.Quantity);
-                    itemCmd.Parameters.AddWithValue("@price", item.UnitPrice);
-                    itemCmd.Parameters.AddWithValue("@total", item.TotalPrice);
-                    itemCmd.ExecuteNonQuery();
-                }
-
+                var result = SaveBillInternal(bill, items, conn, txn);
                 txn.Commit();
-                bill.Items = items;
-
-                AppLogger.Info($"Bill saved: ID={bill.BillId} | Total: Rs.{bill.GrandTotal:N2} | Items: {items.Count}");
-                return bill;
+                return result;
             }
             catch (Exception ex)
             {
@@ -86,6 +43,62 @@ namespace GroceryPOS.Data.Repositories
                 AppLogger.Error("Bill transaction failed — rolled back", ex);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Saves a bill within an existing transaction. 
+        /// Use this when combining bill saving with other operations (like returns or corrections).
+        /// </summary>
+        public Bill SaveBillInternal(Bill bill, List<BillDescription> items, SqliteConnection conn, SqliteTransaction txn)
+        {
+            // ── Step 1: Insert Bill header ──
+            using var billCmd = conn.CreateCommand();
+            billCmd.Transaction = txn;
+            billCmd.CommandText = @"
+                INSERT INTO Bill (BillDateTime, SubTotal, DiscountAmount, TaxAmount, GrandTotal, CashReceived, ChangeGiven, UserId, Status, ReferenceBillId, Type, ParentBillId)
+                VALUES (@dt, @sub, @disc, @tax, @grand, @cash, @change, @uid, @status, @refId, @type, @parentId);
+                SELECT last_insert_rowid();
+            ";
+            billCmd.Parameters.AddWithValue("@dt", bill.BillDateTime.ToString("yyyy-MM-dd HH:mm:ss"));
+            billCmd.Parameters.AddWithValue("@sub", bill.SubTotal);
+            billCmd.Parameters.AddWithValue("@disc", bill.DiscountAmount);
+            billCmd.Parameters.AddWithValue("@tax", bill.TaxAmount);
+            billCmd.Parameters.AddWithValue("@grand", bill.GrandTotal);
+            billCmd.Parameters.AddWithValue("@cash", bill.CashReceived);
+            billCmd.Parameters.AddWithValue("@change", bill.ChangeGiven);
+            billCmd.Parameters.AddWithValue("@uid", bill.UserId.HasValue ? (object)bill.UserId.Value : DBNull.Value);
+            billCmd.Parameters.AddWithValue("@status", bill.Status ?? "Completed");
+            billCmd.Parameters.AddWithValue("@refId", bill.ReferenceBillId.HasValue ? (object)bill.ReferenceBillId.Value : DBNull.Value);
+            billCmd.Parameters.AddWithValue("@type", bill.Type ?? "Sale");
+            billCmd.Parameters.AddWithValue("@parentId", bill.ParentBillId.HasValue ? (object)bill.ParentBillId.Value : DBNull.Value);
+
+            bill.BillId = Convert.ToInt32(billCmd.ExecuteScalar());
+
+            // ── Step 2: Insert BillDescription items ──
+            foreach (var item in items)
+            {
+                item.BillId = bill.BillId;
+
+                using var itemCmd = conn.CreateCommand();
+                itemCmd.Transaction = txn;
+                itemCmd.CommandText = @"
+                    INSERT INTO BillDescription (Bill_id, ItemId, Quantity, UnitPrice, TotalPrice)
+                    VALUES (@billId, @itemId, @qty, @price, @total);
+                    
+                    UPDATE Item SET StockQuantity = StockQuantity - @qty 
+                    WHERE itemId = @itemId;
+                ";
+                itemCmd.Parameters.AddWithValue("@billId", item.BillId);
+                itemCmd.Parameters.AddWithValue("@itemId", item.ItemId);
+                itemCmd.Parameters.AddWithValue("@qty", item.Quantity);
+                itemCmd.Parameters.AddWithValue("@price", item.UnitPrice);
+                itemCmd.Parameters.AddWithValue("@total", item.TotalPrice);
+                itemCmd.ExecuteNonQuery();
+            }
+
+            bill.Items = items;
+            AppLogger.Info($"Bill internal save: ID={bill.BillId} | Status={bill.Status}");
+            return bill;
         }
 
         // ────────────────────────────────────────────
@@ -216,6 +229,54 @@ namespace GroceryPOS.Data.Repositories
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
+        /// <summary>Updates the status of a bill.</summary>
+        public void UpdateBillStatus(int billId, string status, SqliteConnection? conn = null, SqliteTransaction? txn = null)
+        {
+            bool manageConnection = (conn == null);
+            if (manageConnection) conn = DatabaseHelper.GetConnection();
+
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                if (txn != null) cmd.Transaction = txn;
+                cmd.CommandText = "UPDATE Bill SET Status = @status WHERE bill_id = @id;";
+                cmd.Parameters.AddWithValue("@status", status);
+                cmd.Parameters.AddWithValue("@id", billId);
+                cmd.ExecuteNonQuery();
+            }
+            finally
+            {
+                if (manageConnection) conn?.Dispose();
+            }
+        }
+
+        public List<Bill> GetReturnsByParentId(int parentId)
+        {
+            var bills = new List<Bill>();
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt
+                FROM Bill b
+                LEFT JOIN User u ON b.UserId = u.Id
+                WHERE b.ParentBillId = @pid
+                ORDER BY b.BillDateTime ASC;";
+            cmd.Parameters.AddWithValue("@pid", parentId);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var bill = MapBill(reader);
+                bills.Add(bill);
+            }
+
+            foreach (var bill in bills)
+                bill.Items = GetBillItems(conn, bill.BillId);
+
+            return bills;
+        }
+
+
         // ────────────────────────────────────────────
         //  Helper: get line items for a bill
         // ────────────────────────────────────────────
@@ -259,15 +320,20 @@ namespace GroceryPOS.Data.Repositories
             var bill = new Bill
             {
                 BillId         = reader.GetInt32(reader.GetOrdinal("bill_id")),
-                BillDateTime   = reader.GetString(reader.GetOrdinal("BillDateTime")),
+                BillDateTime   = DateTime.TryParse(reader.GetString(reader.GetOrdinal("BillDateTime")), out var bdt) ? bdt : DateTime.MinValue,
                 SubTotal       = reader.GetDouble(reader.GetOrdinal("SubTotal")),
                 DiscountAmount = reader.IsDBNull(reader.GetOrdinal("DiscountAmount")) ? 0 : reader.GetDouble(reader.GetOrdinal("DiscountAmount")),
                 TaxAmount      = reader.IsDBNull(reader.GetOrdinal("TaxAmount")) ? 0 : reader.GetDouble(reader.GetOrdinal("TaxAmount")),
                 GrandTotal     = reader.GetDouble(reader.GetOrdinal("GrandTotal")),
                 CashReceived   = reader.IsDBNull(reader.GetOrdinal("CashReceived")) ? 0 : reader.GetDouble(reader.GetOrdinal("CashReceived")),
                 ChangeGiven    = reader.IsDBNull(reader.GetOrdinal("ChangeGiven")) ? 0 : reader.GetDouble(reader.GetOrdinal("ChangeGiven")),
-                UserId         = reader.IsDBNull(reader.GetOrdinal("UserId")) ? null : reader.GetInt32(reader.GetOrdinal("UserId"))
+                UserId         = reader.IsDBNull(reader.GetOrdinal("UserId")) ? null : reader.GetInt32(reader.GetOrdinal("UserId")),
+                Status         = reader.IsDBNull(reader.GetOrdinal("Status")) ? "Completed" : reader.GetString(reader.GetOrdinal("Status")),
+                ReferenceBillId = reader.IsDBNull(reader.GetOrdinal("ReferenceBillId")) ? null : reader.GetInt32(reader.GetOrdinal("ReferenceBillId")),
+                Type           = reader.IsDBNull(reader.GetOrdinal("Type")) ? "Sale" : reader.GetString(reader.GetOrdinal("Type")),
+                ParentBillId   = reader.IsDBNull(reader.GetOrdinal("ParentBillId")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("ParentBillId"))
             };
+
 
             if (bill.UserId.HasValue && !reader.IsDBNull(reader.GetOrdinal("Username")))
             {

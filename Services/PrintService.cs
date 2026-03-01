@@ -16,6 +16,9 @@ namespace GroceryPOS.Services
     public class PrintService
     {
         private Bill? _billToPrint;
+        private List<Bill>? _returnHistoryToPrint;
+        private Bill? _currentReturnBill;
+        private bool _isSummaryMode = false;
         private string _storeName = "GROCERY MART";
         private string _storeAddress = "Rawat, Rawalpindi, Pakistan";
         private string _storePhone = "0300-1234567";
@@ -56,6 +59,84 @@ namespace GroceryPOS.Services
             catch (Exception ex)
             {
                 AppLogger.Error("Failed to save printer config", ex);
+            }
+        }
+
+        public void PrintUnifiedReturnReceipt(Bill originalBill, Bill returnBill, string cashierName)
+        {
+            try
+            {
+                _billToPrint = originalBill; // Base for original details
+                _currentReturnBill = returnBill;
+                _cashierName = cashierName;
+
+                var printDoc = new PrintDocument();
+                string? targetPrinter = _preferredPrinter;
+
+                if (string.IsNullOrEmpty(targetPrinter))
+                {
+                    using (var dialog = new System.Windows.Forms.PrintDialog())
+                    {
+                        dialog.Document = printDoc;
+                        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                        {
+                            targetPrinter = printDoc.PrinterSettings.PrinterName;
+                            SaveConfig(targetPrinter);
+                        }
+                        else return;
+                    }
+                }
+
+                printDoc.PrinterSettings.PrinterName = targetPrinter;
+                printDoc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", 302, 1500); 
+                printDoc.PrintPage += PrintUnifiedReturnPage_Handler;
+                printDoc.Print();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Unified return receipt printing failed", ex);
+                throw;
+            }
+        }
+
+        public void PrintReturnSummary(Bill originalBill, List<Bill> returns, string cashierName)
+        {
+            try
+            {
+                _billToPrint = originalBill;
+                _returnHistoryToPrint = returns;
+                _cashierName = cashierName;
+                _isSummaryMode = true;
+
+                var printDoc = new PrintDocument();
+                string? targetPrinter = _preferredPrinter;
+
+                if (string.IsNullOrEmpty(targetPrinter))
+                {
+                    using (var dialog = new System.Windows.Forms.PrintDialog())
+                    {
+                        dialog.Document = printDoc;
+                        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                        {
+                            targetPrinter = printDoc.PrinterSettings.PrinterName;
+                            SaveConfig(targetPrinter);
+                        }
+                        else return;
+                    }
+                }
+
+                printDoc.PrinterSettings.PrinterName = targetPrinter;
+                printDoc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", 302, 2000); 
+                printDoc.PrintPage += PrintSummaryPage_Handler;
+                printDoc.Print();
+
+                _isSummaryMode = false;
+                _returnHistoryToPrint = null;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Return summary printing failed", ex);
+                throw;
             }
         }
 
@@ -133,8 +214,18 @@ namespace GroceryPOS.Services
             var sfRight = new StringFormat { Alignment = StringAlignment.Far };
 
             // Store header
-            g.DrawString(_storeName, headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf); // Center on physical paper (302)
+            bool isReturn = _billToPrint.Status == "*** RETURN BILL ***";
+            string mainHeader = isReturn ? "--- RETURN RECEIPT ---" : _storeName;
+            
+            g.DrawString(mainHeader, headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf); 
             y += 20;
+
+            if (isReturn)
+            {
+                g.DrawString(_storeName, boldFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+                y += 15;
+            }
+
             g.DrawString(_storeAddress, smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
             y += 15;
             g.DrawString($"Ph: {_storePhone}", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
@@ -145,8 +236,13 @@ namespace GroceryPOS.Services
             y += 14;
 
             // Bill info
-            g.DrawString($"Bill#: {_billToPrint.BillId}", normalFont, Brushes.Black, margin, y);
+            g.DrawString($"Receipt#: {_billToPrint.InvoiceNumber}", normalFont, Brushes.Black, margin, y);
             y += 13;
+            if (isReturn && _billToPrint.ReferenceBillId.HasValue)
+            {
+                g.DrawString($"Orig Bill#: {_billToPrint.ReferenceBillId.Value:D5}", boldFont, Brushes.Black, margin, y);
+                y += 13;
+            }
             g.DrawString($"Date: {_billToPrint.BillDateTime}", normalFont, Brushes.Black, margin, y);
             y += 13;
             g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y);
@@ -175,9 +271,13 @@ namespace GroceryPOS.Services
                 SizeF size = g.MeasureString(item.ItemDescription, normalFont, (int)descWidth);
                 float descHeight = Math.Max(14, size.Height);
 
-                g.DrawString(item.Quantity.ToString(), normalFont, Brushes.Black, 135, y);
+                // Use absolute value for return quantities to make it readable as "Returned 2"
+                double displayQty = Math.Abs(item.Quantity);
+                double displayTotal = Math.Abs(item.TotalPrice);
+
+                g.DrawString(displayQty.ToString(), normalFont, Brushes.Black, 135, y);
                 g.DrawString(item.UnitPrice.ToString("N0"), normalFont, Brushes.Black, 170, y);
-                g.DrawString(item.TotalPrice.ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
+                g.DrawString(displayTotal.ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
                 
                 y += descHeight + 3; // Better spacing
             }
@@ -186,35 +286,49 @@ namespace GroceryPOS.Services
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
             y += 14;
 
-            g.DrawString("Sub Total:", boldFont, Brushes.Black, margin, y);
-            g.DrawString($"Rs.{_billToPrint.SubTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
-            y += 14;
+            string labelTotal = isReturn ? "TOTAL RETURNED:" : "GRAND TOTAL:";
+            double amountToDisplay = Math.Abs(_billToPrint.GrandTotal);
 
-            g.DrawString("Discount:", normalFont, Brushes.Black, margin, y);
-            g.DrawString($"-Rs.{_billToPrint.DiscountAmount:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
-            y += 14;
-
-            if (_billToPrint.TaxAmount > 0)
+            if (!isReturn)
             {
-                g.DrawString("Tax:", normalFont, Brushes.Black, margin, y);
-                g.DrawString($"Rs.{_billToPrint.TaxAmount:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
+                g.DrawString("Sub Total:", boldFont, Brushes.Black, margin, y);
+                g.DrawString($"Rs.{_billToPrint.SubTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+                y += 14;
+
+                g.DrawString("Discount:", normalFont, Brushes.Black, margin, y);
+                g.DrawString($"-Rs.{_billToPrint.DiscountAmount:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
+                y += 14;
+
+                if (_billToPrint.TaxAmount > 0)
+                {
+                    g.DrawString("Tax:", normalFont, Brushes.Black, margin, y);
+                    g.DrawString($"Rs.{_billToPrint.TaxAmount:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
+                    y += 14;
+                }
+
+                g.DrawString(new string('=', 44), normalFont, Brushes.Black, margin, y);
                 y += 14;
             }
 
-            g.DrawString(new string('=', 44), normalFont, Brushes.Black, margin, y);
-            y += 14;
-
-            g.DrawString("GRAND TOTAL:", headerFont, Brushes.Black, margin, y);
-            g.DrawString($"Rs.{_billToPrint.GrandTotal:N2}", headerFont, Brushes.Black, pageWidth, y, sfRight);
+            g.DrawString(labelTotal, headerFont, Brushes.Black, margin, y);
+            g.DrawString($"Rs.{amountToDisplay:N2}", headerFont, Brushes.Black, pageWidth, y, sfRight);
             y += 20;
 
-            g.DrawString("Cash Received:", normalFont, Brushes.Black, margin, y);
-            g.DrawString($"Rs.{_billToPrint.CashReceived:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
-            y += 14;
+            if (!isReturn)
+            {
+                g.DrawString("Cash Received:", normalFont, Brushes.Black, margin, y);
+                g.DrawString($"Rs.{_billToPrint.CashReceived:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
+                y += 14;
 
-            g.DrawString("Change:", normalFont, Brushes.Black, margin, y);
-            g.DrawString($"Rs.{_billToPrint.ChangeGiven:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
-            y += 20;
+                g.DrawString("Change:", normalFont, Brushes.Black, margin, y);
+                g.DrawString($"Rs.{_billToPrint.ChangeGiven:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
+                y += 20;
+            }
+            else
+            {
+                g.DrawString("* Amount Credited/Refunded *", normalFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+                y += 20;
+            }
 
             // Footer
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
@@ -225,6 +339,91 @@ namespace GroceryPOS.Services
 
             e.HasMorePages = false;
 
+            headerFont.Dispose();
+            normalFont.Dispose();
+            boldFont.Dispose();
+            smallFont.Dispose();
+        }
+
+        private void PrintSummaryPage_Handler(object sender, PrintPageEventArgs e)
+        {
+            if (e.Graphics == null || _billToPrint == null) return;
+
+            var g = e.Graphics;
+            var headerFont = new Font("Consolas", 11, FontStyle.Bold);
+            var normalFont = new Font("Consolas", 8);
+            var boldFont = new Font("Consolas", 8, FontStyle.Bold);
+            var smallFont = new Font("Consolas", 7);
+
+            float y = 5;
+            float margin = 5;
+            float pageWidth = 265;
+            var sf = new StringFormat { Alignment = StringAlignment.Center };
+            var sfRight = new StringFormat { Alignment = StringAlignment.Far };
+
+            // 1. Header
+            g.DrawString("--- RETURN SUMMARY ---", headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf);
+            y += 20;
+            g.DrawString(_storeName, boldFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+            y += 30;
+
+            // 2. Original Bill Section
+            g.DrawString("----------------------------------------", normalFont, Brushes.Black, margin, y); y += 14;
+            g.DrawString("ORIGINAL BILL", boldFont, Brushes.Black, margin, y); y += 14;
+            g.DrawString($"Bill No: {_billToPrint.InvoiceNumber}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Date: {_billToPrint.BillDateTime:dd-MM-yyyy}", normalFont, Brushes.Black, margin, y); y += 15;
+            
+            g.DrawString("Items Sold:", boldFont, Brushes.Black, margin, y); y += 14;
+            foreach (var item in _billToPrint.Items)
+            {
+                string desc = $"  {item.ItemDescription} {item.Quantity}";
+                float descWidth = pageWidth;
+                RectangleF rect = new RectangleF(margin, y, descWidth, 200);
+                g.DrawString(desc, normalFont, Brushes.Black, rect);
+                
+                SizeF size = g.MeasureString(desc, normalFont, (int)descWidth);
+                y += Math.Max(13, size.Height) + 2;
+            }
+            g.DrawString($"Total: Rs.{_billToPrint.GrandTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 20;
+            g.DrawString("----------------------------------------", normalFont, Brushes.Black, margin, y); y += 25;
+
+            // 3. Sequential Returns
+            if (_returnHistoryToPrint != null && _returnHistoryToPrint.Any())
+            {
+                int returnIndex = 1;
+                foreach (var ret in _returnHistoryToPrint.OrderBy(r => r.BillDateTime))
+                {
+                    g.DrawString($"Return #{returnIndex}", boldFont, Brushes.Black, margin, y);
+                    y += 14;
+                    g.DrawString($"Date: {ret.BillDateTime:dd-MM-yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y);
+                    y += 13;
+
+                    foreach (var item in ret.Items)
+                    {
+                        // Show absolute quantity for clarity in summary
+                        string desc = $"  {item.ItemDescription} {Math.Abs(item.Quantity)}";
+                        float descWidth = pageWidth;
+                        RectangleF rect = new RectangleF(margin, y, descWidth, 200);
+                        g.DrawString(desc, normalFont, Brushes.Black, rect);
+                        
+                        SizeF size = g.MeasureString(desc, normalFont, (int)descWidth);
+                        y += Math.Max(13, size.Height) + 2;
+                    }
+                    g.DrawString($"Return Total: Rs.{Math.Abs(ret.GrandTotal):N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+                    y += 25;
+                    returnIndex++;
+                }
+            }
+            else
+            {
+                g.DrawString("(No returns found)", normalFont, Brushes.Black, margin, y);
+                y += 20;
+            }
+
+            g.DrawString("--- End of Report ---", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+
+            e.HasMorePages = false;
             headerFont.Dispose();
             normalFont.Dispose();
             boldFont.Dispose();
@@ -244,6 +443,117 @@ namespace GroceryPOS.Services
             {
                 AppLogger.Error("Cash drawer command failed", ex);
             }
+        }
+        private void PrintUnifiedReturnPage_Handler(object sender, PrintPageEventArgs e)
+        {
+            if (e.Graphics == null || _billToPrint == null || _currentReturnBill == null) return;
+
+            var g = e.Graphics;
+            var headerFont = new Font("Consolas", 11, FontStyle.Bold);
+            var normalFont = new Font("Consolas", 8);
+            var boldFont = new Font("Consolas", 8, FontStyle.Bold);
+            var smallFont = new Font("Consolas", 7);
+
+            float y = 5;
+            float margin = 5;
+            float pageWidth = 265;
+            var sf = new StringFormat { Alignment = StringAlignment.Center };
+            var sfRight = new StringFormat { Alignment = StringAlignment.Far };
+
+            // 1. Header (Identical to Original)
+            g.DrawString(_storeName, headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf); 
+            y += 20;
+            g.DrawString("--- RETURN RECEIPT ---", boldFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+            y += 15;
+            g.DrawString(_storeAddress, smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+            y += 15;
+            g.DrawString($"Ph: {_storePhone}", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+            y += 18;
+
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
+
+            // 2. Bill Infos (Identical to Original Style)
+            g.DrawString($"Return Receipt#: {_currentReturnBill.InvoiceNumber}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Original Bill#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Date: {_currentReturnBill.BillDateTime}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 16;
+
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
+
+            // 3. Original Items Section (Same Header as Original)
+            g.DrawString("ORIGINAL SALE DETAILS", boldFont, Brushes.Black, margin, y); y += 14;
+            g.DrawString("Item", boldFont, Brushes.Black, margin, y);
+            g.DrawString("Qty", boldFont, Brushes.Black, 130, y);
+            g.DrawString("Price", boldFont, Brushes.Black, 170, y);
+            g.DrawString("Total", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 14;
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
+
+            foreach (var item in _billToPrint.Items)
+            {
+                float descWidth = 125;
+                RectangleF rect = new RectangleF(margin, y, descWidth, 200);
+                g.DrawString(item.ItemDescription, normalFont, Brushes.Black, rect);
+                
+                SizeF size = g.MeasureString(item.ItemDescription, normalFont, (int)descWidth);
+                float descHeight = Math.Max(14, size.Height);
+
+                g.DrawString(item.Quantity.ToString(), normalFont, Brushes.Black, 135, y);
+                g.DrawString(item.UnitPrice.ToString("N0"), normalFont, Brushes.Black, 170, y);
+                g.DrawString(item.TotalPrice.ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
+                
+                y += descHeight + 3;
+            }
+            g.DrawString($"Orig Total: Rs.{_billToPrint.GrandTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 20;
+
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
+
+            // 4. Return Items Section
+            g.DrawString("RETURNED ITEMS HERE", boldFont, Brushes.Black, margin, y); y += 14;
+            g.DrawString("Item", boldFont, Brushes.Black, margin, y);
+            g.DrawString("Qty", boldFont, Brushes.Black, 130, y);
+            g.DrawString("Refund", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 14;
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
+
+            foreach (var item in _currentReturnBill.Items)
+            {
+                float descWidth = 125;
+                RectangleF rect = new RectangleF(margin, y, descWidth, 200);
+                g.DrawString(item.ItemDescription, normalFont, Brushes.Black, rect);
+                
+                SizeF size = g.MeasureString(item.ItemDescription, normalFont, (int)descWidth);
+                float descHeight = Math.Max(14, size.Height);
+
+                g.DrawString(Math.Abs(item.Quantity).ToString(), normalFont, Brushes.Black, 135, y);
+                g.DrawString(Math.Abs(item.TotalPrice).ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
+                
+                y += descHeight + 3;
+            }
+
+            g.DrawString(new string('=', 44), normalFont, Brushes.Black, margin, y); y += 14;
+
+            // 5. Grand Totals (Large font as requested)
+            g.DrawString("TOTAL REFUNDED:", headerFont, Brushes.Black, margin, y);
+            g.DrawString($"Rs.{Math.Abs(_currentReturnBill.GrandTotal):N2}", headerFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 25;
+
+            g.DrawString("* Amount Credited/Refunded *", normalFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+            y += 20;
+
+            // Footer (Identical to Original)
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
+            y += 14;
+            g.DrawString("Thank you for shopping!", normalFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+            y += 15;
+            g.DrawString("Please come again", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
+
+            e.HasMorePages = false;
+            headerFont.Dispose();
+            normalFont.Dispose();
+            boldFont.Dispose();
+            smallFont.Dispose();
         }
     }
 }

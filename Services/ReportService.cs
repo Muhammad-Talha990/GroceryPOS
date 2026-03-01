@@ -44,10 +44,12 @@ namespace GroceryPOS.Services
             return _billRepo.GetByDateRange(start, end);
         }
 
-        /// <summary>Gets all bills for a week starting from the given date.</summary>
-        public List<Bill> GetWeeklyReport(DateTime start)
+        /// <summary>Gets all bills for a week starting from the given date (Monday-based).</summary>
+        public List<Bill> GetWeeklyReport(DateTime date)
         {
-            var from = start.Date;
+            // Calculate start of week (Monday)
+            int diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+            var from = date.AddDays(-1 * diff).Date;
             var to = from.AddDays(7);
             return _billRepo.GetByDateRange(from, to);
         }
@@ -124,5 +126,7 @@ namespace GroceryPOS.Services
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
+
+        public string GetDiagnostics() => DatabaseHelper.GetDatabaseDiagnostics();
     }
 }

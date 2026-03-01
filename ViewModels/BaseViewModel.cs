@@ -1,5 +1,7 @@
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows;
 
 namespace GroceryPOS.ViewModels
 {
@@ -18,6 +20,23 @@ namespace GroceryPOS.ViewModels
             field = value;
             OnPropertyChanged(propertyName);
             return true;
+        }
+
+        /// <summary>
+        /// Safely executes an action on the UI (Dispatcher) thread.
+        /// Useful for updating collections from background tasks.
+        /// </summary>
+        protected void Dispatch(Action action)
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.CheckAccess())
+            {
+                action();
+            }
+            else
+            {
+                dispatcher.BeginInvoke(action);
+            }
         }
     }
 }

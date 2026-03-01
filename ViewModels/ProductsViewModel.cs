@@ -106,19 +106,16 @@ namespace GroceryPOS.ViewModels
         {
             try
             {
-                AppLogger.Info("LoadProducts: Started.");
-                Products.Clear();
-
                 var products = string.IsNullOrWhiteSpace(SearchText)
                     ? _itemService.GetAllItems()
                     : _itemService.SearchItems(SearchText);
 
-                AppLogger.Info($"LoadProducts: Fetched {products.Count} items.");
-
-                foreach (var p in products)
-                    Products.Add(p);
-
-                AppLogger.Info("LoadProducts: Completed.");
+                Dispatch(() =>
+                {
+                    Products.Clear();
+                    foreach (var p in products)
+                        Products.Add(p);
+                });
             }
             catch (Exception ex)
             {

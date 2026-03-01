@@ -26,7 +26,13 @@ namespace GroceryPOS.ViewModels
             set 
             { 
                 if (SetProperty(ref _fromDate, value))
+                {
+                    // Ensure FromDate is not after ToDate
+                    if (_fromDate > ToDate)
+                        SetProperty(ref _toDate, _fromDate, nameof(ToDate));
+                    
                     GenerateReport();
+                }
             }
         }
 
@@ -37,7 +43,13 @@ namespace GroceryPOS.ViewModels
             set 
             { 
                 if (SetProperty(ref _toDate, value))
+                {
+                    // Ensure ToDate is not before FromDate
+                    if (_toDate < FromDate)
+                        SetProperty(ref _fromDate, _toDate, nameof(FromDate));
+
                     GenerateReport();
+                }
             }
         }
 
@@ -64,13 +76,20 @@ namespace GroceryPOS.ViewModels
         private bool _showProductGrid;
         public bool ShowProductGrid { get => _showProductGrid; set => SetProperty(ref _showProductGrid, value); }
 
-        public ICommand GenerateReportCommand { get; }
+        private bool _isToDateVisible;
+        public bool IsToDateVisible { get => _isToDateVisible; set => SetProperty(ref _isToDateVisible, value); }
+
+        private bool _isFromDateVisible = true;
+        public bool IsFromDateVisible { get => _isFromDateVisible; set => SetProperty(ref _isFromDateVisible, value); }
+        
+        private string _fromDateLabel = "Target Date";
+        public string FromDateLabel { get => _fromDateLabel; set => SetProperty(ref _fromDateLabel, value); }
+
         public ICommand ExportReportCommand { get; }
 
         public ReportsViewModel(ReportService reportService)
         {
             _reportService = reportService;
-            GenerateReportCommand = new RelayCommand(GenerateReport);
             ExportReportCommand = new RelayCommand(ExportReport);
             GenerateReport();
         }
@@ -79,66 +98,67 @@ namespace GroceryPOS.ViewModels
         {
             try
             {
-                AppLogger.Info($"Generating report: Type='{SelectedReportType}', From='{FromDate:yyyy-MM-dd}', To='{ToDate:yyyy-MM-dd}'");
-                
+                DateTime start, end;
                 SalesReport.Clear();
                 ProductReport.Clear();
 
                 var type = SelectedReportType?.Trim();
 
-                if (string.Equals(type, "Daily", StringComparison.OrdinalIgnoreCase))
+                // 1. Determine UI State
+                if (string.Equals(type, "Custom Range", StringComparison.OrdinalIgnoreCase))
                 {
-                    ShowSalesGrid = true;
-                    ShowProductGrid = false;
-                    // Daily shortcut: just use FromDate for that day
-                    var start = FromDate.Date;
-                    var end = start.AddDays(1);
-                    var data = _reportService.GetByDateRange(start, end);
-                    foreach (var s in data) SalesReport.Add(s);
-                    TotalRevenue = data.Sum(s => s.GrandTotal);
-                    TotalSalesCount = data.Count;
-                }
-                else if (string.Equals(type, "Weekly", StringComparison.OrdinalIgnoreCase))
-                {
-                    ShowSalesGrid = true;
-                    ShowProductGrid = false;
-                    // Weekly shortcut: 7 days from FromDate
-                    var start = FromDate.Date;
-                    var end = start.AddDays(7);
-                    var data = _reportService.GetByDateRange(start, end);
-                    foreach (var s in data) SalesReport.Add(s);
-                    TotalRevenue = data.Sum(s => s.GrandTotal);
-                    TotalSalesCount = data.Count;
-                }
-                else if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
-                {
-                    ShowSalesGrid = true;
-                    ShowProductGrid = false;
-                    // Monthly shortcut: the whole month of FromDate
-                    var start = new DateTime(FromDate.Year, FromDate.Month, 1);
-                    var end = start.AddMonths(1);
-                    var data = _reportService.GetByDateRange(start, end);
-                    foreach (var s in data) SalesReport.Add(s);
-                    TotalRevenue = data.Sum(s => s.GrandTotal);
-                    TotalSalesCount = data.Count;
-                }
-                else if (string.Equals(type, "Custom Range", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(type))
-                {
-                    ShowSalesGrid = true;
-                    ShowProductGrid = false;
-                    var start = FromDate.Date;
-                    var end = ToDate.Date.AddDays(1);
-                    var data = _reportService.GetByDateRange(start, end);
-                    foreach (var s in data) SalesReport.Add(s);
-                    TotalRevenue = data.Sum(s => s.GrandTotal);
-                    TotalSalesCount = data.Count;
+                    IsFromDateVisible = true;
+                    IsToDateVisible = true;
+                    FromDateLabel = "From Date";
                 }
                 else if (string.Equals(type, "Product-wise", StringComparison.OrdinalIgnoreCase))
                 {
+                    IsFromDateVisible = true;
+                    IsToDateVisible = true;
+                    FromDateLabel = "Start Date";
+                }
+                else
+                {
+                    // Daily, Weekly, Monthly use a single date picker to define the period
+                    IsFromDateVisible = true;
+                    IsToDateVisible = false;
+                    
+                    if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
+                        FromDateLabel = "Selected Month";
+                    else if (string.Equals(type, "Weekly", StringComparison.OrdinalIgnoreCase))
+                        FromDateLabel = "Selected Week";
+                    else
+                        FromDateLabel = "Report Date";
+                }
+
+                // 2. Determine Date Range based on FromDate (the anchor)
+                if (string.Equals(type, "Daily", StringComparison.OrdinalIgnoreCase))
+                {
+                    start = FromDate.Date;
+                    end = start.AddDays(1);
+                }
+                else if (string.Equals(type, "Weekly", StringComparison.OrdinalIgnoreCase))
+                {
+                    int diff = (7 + (FromDate.DayOfWeek - DayOfWeek.Monday)) % 7;
+                    start = FromDate.AddDays(-1 * diff).Date;
+                    end = start.AddDays(7);
+                }
+                else if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
+                {
+                    start = new DateTime(FromDate.Year, FromDate.Month, 1);
+                    end = start.AddMonths(1);
+                }
+                else // Custom or Product-wise
+                {
+                    start = FromDate.Date;
+                    end = ToDate.Date.AddDays(1);
+                }
+
+                // 3. Fetch and Populate Data
+                if (string.Equals(type, "Product-wise", StringComparison.OrdinalIgnoreCase))
+                {
                     ShowSalesGrid = false;
                     ShowProductGrid = true;
-                    var start = FromDate.Date;
-                    var end = ToDate.Date.AddDays(1);
                     var data = _reportService.GetProductWiseReport(start, end);
                     foreach (var r in data) ProductReport.Add(r);
                     TotalRevenue = data.Sum(r => r.TotalRevenue);
@@ -146,8 +166,30 @@ namespace GroceryPOS.ViewModels
                 }
                 else
                 {
-                    AppLogger.Warning($"Unknown report type received: '{type}'");
+                    ShowSalesGrid = true;
+                    ShowProductGrid = false;
+                    var data = _reportService.GetByDateRange(start, end);
+                    foreach (var s in data) SalesReport.Add(s);
+                    TotalRevenue = data.Sum(s => s.GrandTotal);
+                    TotalSalesCount = data.Count;
+
+                    // Weekly performance summary for Monthly reports
+                    if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var weeklyGroups = data.GroupBy(b => {
+                            int d = (7 + (b.BillDateTime.DayOfWeek - DayOfWeek.Monday)) % 7;
+                            return b.BillDateTime.AddDays(-1 * d).Date;
+                        }).OrderBy(g => g.Key);
+
+                        foreach (var week in weeklyGroups)
+                        {
+                            AppLogger.Info($"Week starting {week.Key:yyyy-MM-dd}: Rs.{week.Sum(b => b.GrandTotal):N2} ({week.Count()} bills)");
+                        }
+                    }
                 }
+
+                // 3. Log System Diagnostics
+                AppLogger.Info(_reportService.GetDiagnostics());
             }
             catch (Exception ex)
             {
@@ -176,8 +218,19 @@ namespace GroceryPOS.ViewModels
                         csv.AppendLine("Invoice #,Cashier,Sub Total,Discount,Tax,Grand Total,Date/Time");
                         foreach (var b in SalesReport)
                         {
-                            csv.AppendLine($"{b.InvoiceNumber},{b.User?.FullName ?? "Unknown"},{b.SubTotal},{b.DiscountAmount},{b.TaxAmount},{b.GrandTotal},{b.SaleDate:yyyy-MM-dd HH:mm}");
+                            csv.AppendLine($"{b.InvoiceNumber},{b.User?.FullName ?? "Unknown"},{b.SubTotal},{b.DiscountAmount},{b.TaxAmount},{b.GrandTotal},{b.BillDateTime:yyyy-MM-dd HH:mm}");
                         }
+                        
+                        // Add TOTAL row
+                        double totalSub = 0, totalDisc = 0, totalTax = 0, totalGrand = 0;
+                        foreach (var b in SalesReport)
+                        {
+                            totalSub += b.SubTotal;
+                            totalDisc += b.DiscountAmount;
+                            totalTax += b.TaxAmount;
+                            totalGrand += b.GrandTotal;
+                        }
+                        csv.AppendLine($"TOTAL,,{totalSub},{totalDisc},{totalTax},{totalGrand},");
                     }
                     else
                     {
@@ -186,6 +239,16 @@ namespace GroceryPOS.ViewModels
                         {
                             csv.AppendLine($"\"{p.ItemDescription}\",{p.QuantitySold},{p.TotalRevenue}");
                         }
+
+                        // Add TOTAL row
+                        int totalQty = 0;
+                        double totalRev = 0;
+                        foreach (var p in ProductReport)
+                        {
+                            totalQty += p.QuantitySold;
+                            totalRev += p.TotalRevenue;
+                        }
+                        csv.AppendLine($"TOTAL,{totalQty},{totalRev}");
                     }
 
                     System.IO.File.WriteAllText(sfd.FileName, csv.ToString());

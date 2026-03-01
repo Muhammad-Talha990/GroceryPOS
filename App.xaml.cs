@@ -74,6 +74,10 @@ public partial class App : Application
         services.AddSingleton<ReportService>();
         services.AddSingleton<BackupService>();
 
+        // --- Supplier Bill Management ---
+        services.AddSingleton<IImageStorageService, ImageStorageService>();
+        services.AddSingleton<UniqueIdGenerator>();
+
         // --- ViewModels ---
         services.AddTransient<LoginViewModel>();
         services.AddTransient<MainViewModel>();
@@ -82,6 +86,7 @@ public partial class App : Application
         services.AddTransient<BillingViewModel>();
         services.AddTransient<ReportsViewModel>();
         services.AddTransient<BackupViewModel>();
+        services.AddTransient<SupplierBillsViewModel>();
 
         _serviceProvider = services.BuildServiceProvider();
     }

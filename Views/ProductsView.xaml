@@ -142,6 +142,8 @@
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="📦 Quantity" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                 <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormStockQuantity, UpdateSourceTrigger=PropertyChanged}"
+                                          IsReadOnly="True" Background="#F1F5F9"
+                                          ToolTip="Quantity can only be updated via Supply Registration or Sales."
                                           helpers:FocusHelper.SelectAllOnFocus="True"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">

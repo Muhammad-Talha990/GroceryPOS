@@ -62,7 +62,7 @@
                 <Button Grid.Column="3" Content="📊 Generate" Style="{DynamicResource PrimaryButton}"
                         Command="{Binding GenerateReportCommand}" VerticalAlignment="Bottom" Padding="20,10" Margin="0,0,8,0"/>
 
-                <Button Grid.Column="4" Content="📥 Export CSV" Style="{DynamicResource SecondaryButton}"
+                <Button Grid.Column="4" Content="📥 Export CSV" Style="{DynamicResource PrimaryButton}"
                         Command="{Binding ExportReportCommand}" VerticalAlignment="Bottom" Padding="20,10"/>
 
                 <!-- Summary -->

@@ -298,9 +298,8 @@
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <!-- Removed Template to restore default editing behavior -->
         <Style.Triggers>
-            <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#F1F5F9"/>
             </Trigger>
         </Style.Triggers>
     </Style>

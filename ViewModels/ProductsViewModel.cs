@@ -138,7 +138,7 @@ namespace GroceryPOS.ViewModels
                 FormCategory = string.Empty;
                 FormCostPrice = "0";
                 FormSalePrice = "0";
-                FormStockQuantity = "0";
+                FormStockQuantity = "0.00";
                 FormMinStockThreshold = "10";
                 StatusMessage = "Form cleared.";
             }
@@ -180,7 +180,7 @@ namespace GroceryPOS.ViewModels
                     CostPrice = double.Parse(FormCostPrice),
                     SalePrice = double.Parse(FormSalePrice),
                     ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
-                    StockQuantity = double.Parse(FormStockQuantity),
+                    StockQuantity = 0, // Initial stock must be added via Supply Registration
                     MinStockThreshold = double.Parse(FormMinStockThreshold)
                 };
 
@@ -227,7 +227,7 @@ namespace GroceryPOS.ViewModels
                         CostPrice = double.Parse(FormCostPrice),
                         SalePrice = double.Parse(FormSalePrice),
                         ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
-                        StockQuantity = double.Parse(FormStockQuantity),
+                        StockQuantity = double.Parse(FormStockQuantity), // Preserve current stock even on barcode change
                         MinStockThreshold = double.Parse(FormMinStockThreshold)
                     };
                     _itemService.AddItem(newItem);
@@ -241,7 +241,7 @@ namespace GroceryPOS.ViewModels
                         CostPrice = double.Parse(FormCostPrice),
                         SalePrice = double.Parse(FormSalePrice),
                         ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
-                        StockQuantity = double.Parse(FormStockQuantity),
+                        StockQuantity = double.Parse(FormStockQuantity), // Set current stock to keep cache consistent
                         MinStockThreshold = double.Parse(FormMinStockThreshold)
                     };
                     _itemService.UpdateItem(item);
@@ -303,10 +303,24 @@ namespace GroceryPOS.ViewModels
             { StatusMessage = "Invalid cost price."; return false; }
             if (!double.TryParse(FormSalePrice, out var sale) || sale < 0)
             { StatusMessage = "Invalid sale price."; return false; }
-            if (!double.TryParse(FormStockQuantity, out var stock))
-            { StatusMessage = "Invalid stock quantity."; return false; }
+            // Note: FormStockQuantity is read-only in UI, so validation is less critical but kept for format check
+            if (!double.TryParse(FormStockQuantity, out _))
+            { StatusMessage = "Invalid stock quantity format."; return false; }
             if (!double.TryParse(FormMinStockThreshold, out var threshold) || threshold < 0)
             { StatusMessage = "Invalid threshold."; return false; }
+
+            // Cost Price > Sale Price Validation
+            if (cost > sale)
+            {
+                var result = MessageBox.Show($"Warning: The Cost Price (Rs. {cost:F2}) is higher than the Sale Price (Rs. {sale:F2}).\n\nYou will be selling this item at a loss. Are you sure you want to continue?", 
+                    "Price Validation Warning", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                
+                if (result == MessageBoxResult.No)
+                {
+                    StatusMessage = "✗ Operation cancelled due to price discrepancy.";
+                    return false;
+                }
+            }
 
             return true;
         }

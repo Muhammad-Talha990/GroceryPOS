@@ -141,7 +141,6 @@ namespace GroceryPOS.Data.Repositories
                     CostPrice     = @cost,
                     SalePrice     = @sale,
                     ItemCategory  = @cat,
-                    StockQuantity = @stock,
                     MinStockThreshold = @threshold
                 WHERE itemId = @id;
             ";
@@ -150,11 +149,10 @@ namespace GroceryPOS.Data.Repositories
             cmd.Parameters.AddWithValue("@cost", item.CostPrice);
             cmd.Parameters.AddWithValue("@sale", item.SalePrice);
             cmd.Parameters.AddWithValue("@cat", (object?)item.ItemCategory ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@stock", item.StockQuantity);
             cmd.Parameters.AddWithValue("@threshold", item.MinStockThreshold);
             cmd.ExecuteNonQuery();
 
-            AppLogger.Info($"Item updated: '{item.Description}' (Barcode: {item.ItemId})");
+            AppLogger.Info($"Item updated (info only): '{item.Description}' (Barcode: {item.ItemId})");
         }
 
         /// <summary>Permanently deletes an item by barcode.</summary>

@@ -74,6 +74,11 @@ namespace GroceryPOS.Services
 
         public void UpdateItemInCache(Item item)
         {
+            // If item exists, preserve its current stock quantity before updating
+            if (_itemCache.TryGetValue(item.ItemId, out var existing))
+            {
+                item.StockQuantity = existing.StockQuantity;
+            }
             _itemCache[item.ItemId] = item;
         }
 

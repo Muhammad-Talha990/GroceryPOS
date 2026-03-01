@@ -26,6 +26,9 @@
         <DataTemplate DataType="{x:Type vm:BackupViewModel}">
             <local:BackupView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SupplierBillsViewModel}">
+            <local:SupplierBillsView/>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -78,6 +81,10 @@
 
                     <Button Content="💾  Backup" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="Backup"
+                            Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"/>
+
+                    <Button Content="🧾  Supplier Bills" Style="{DynamicResource SidebarButton}"
+                            Command="{Binding NavigateCommand}" CommandParameter="SupplierBills"
                             Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"/>
                 </StackPanel>
             </DockPanel>

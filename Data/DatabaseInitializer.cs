@@ -88,6 +88,20 @@ namespace GroceryPOS.Data
                     ");
 
                     // ══════════════════════════════════════════
+                    //  TABLE 6: stock (Purchase Ledger / Supply History)
+                    // ══════════════════════════════════════════
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS stock (
+                            Id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                            product_id      TEXT    NOT NULL,
+                            bill_id         TEXT    NOT NULL,
+                            quantity        INTEGER NOT NULL,
+                            system_date     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                            image_path      TEXT
+                        );
+                    ");
+
+                    // ══════════════════════════════════════════
                     //  INDEXES for query optimization
                     // ══════════════════════════════════════════
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Item_ItemCategory       ON Item(ItemCategory);");
@@ -95,10 +109,19 @@ namespace GroceryPOS.Data
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_UserId              ON Bill(UserId);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_BillId          ON BillDescription(Bill_id);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_ItemId          ON BillDescription(ItemId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_ProductId         ON stock(product_id);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_BillId            ON stock(bill_id);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_Date              ON stock(system_date);");
 
                     // ── Migration: Add StockQuantity and MinStockThreshold if they don't exist ──
                     AddColumnIfNotExists(conn, "Item", "StockQuantity", "REAL NOT NULL DEFAULT 0");
                     AddColumnIfNotExists(conn, "Item", "MinStockThreshold", "REAL NOT NULL DEFAULT 10");
+
+                    // ── Migration: Add image_path to stock table if it doesn't exist ──
+                    AddColumnIfNotExists(conn, "stock", "image_path", "TEXT");
+
+                    // ── Migration: Remove stale foreign keys from stock table ──
+                    MigrateStockTableIfNeeded(conn);
 
                     SeedUsers(conn);
                     
@@ -282,6 +305,75 @@ namespace GroceryPOS.Data
             {
                 Execute(conn, $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};");
                 AppLogger.Info($"DatabaseInitializer: Added column '{columnName}' to table '{tableName}'.");
+            }
+        }
+
+        // ────────────────────────────────────────────
+        //  Migration: Recreate stock table without FKs
+        // ────────────────────────────────────────────
+        private static void MigrateStockTableIfNeeded(SqliteConnection conn)
+        {
+            // Check if the stock table has foreign keys (old schema)
+            using var fkCmd = conn.CreateCommand();
+            fkCmd.CommandText = "PRAGMA foreign_key_list(stock)";
+            bool hasForeignKeys = false;
+            using (var reader = fkCmd.ExecuteReader())
+            {
+                if (reader.Read()) hasForeignKeys = true;
+            }
+
+            if (!hasForeignKeys) return;
+
+            AppLogger.Info("DatabaseInitializer: Migrating stock table to remove stale foreign keys...");
+
+            // Disable FK checks during migration
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+
+            using var transaction = conn.BeginTransaction();
+            try
+            {
+                // 1. Rename old table
+                Execute(conn, "ALTER TABLE stock RENAME TO stock_old;");
+
+                // 2. Create new table without FKs
+                Execute(conn, @"
+                    CREATE TABLE stock (
+                        Id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id      TEXT    NOT NULL,
+                        bill_id         TEXT    NOT NULL,
+                        quantity        INTEGER NOT NULL,
+                        system_date     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                        image_path      TEXT
+                    );
+                ");
+
+                // 3. Copy data
+                Execute(conn, @"
+                    INSERT INTO stock (Id, product_id, bill_id, quantity, system_date, image_path)
+                    SELECT Id, product_id, bill_id, quantity, system_date, image_path
+                    FROM stock_old;
+                ");
+
+                // 4. Drop old table
+                Execute(conn, "DROP TABLE stock_old;");
+
+                // 5. Recreate indexes
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_ProductId ON stock(product_id);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_BillId    ON stock(bill_id);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_Date      ON stock(system_date);");
+
+                transaction.Commit();
+                AppLogger.Info("DatabaseInitializer: Stock table migrated successfully.");
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                AppLogger.Error("DatabaseInitializer: Stock table migration failed", ex);
+            }
+            finally
+            {
+                // Re-enable FK checks
+                Execute(conn, "PRAGMA foreign_keys = ON;");
             }
         }
 

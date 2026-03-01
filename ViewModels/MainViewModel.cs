@@ -94,6 +94,7 @@ namespace GroceryPOS.ViewModels
                 "Billing"   => _serviceProvider.GetRequiredService<BillingViewModel>(),
                 "Reports"   => _serviceProvider.GetRequiredService<ReportsViewModel>(),
                 "Backup"    => _serviceProvider.GetRequiredService<BackupViewModel>(),
+                "SupplierBills" => _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
                 _ => _serviceProvider.GetRequiredService<DashboardViewModel>()
             };
         }

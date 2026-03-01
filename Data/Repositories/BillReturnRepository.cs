@@ -22,7 +22,7 @@ namespace GroceryPOS.Data.Repositories
 
             try
             {
-                using var cmd = conn.CreateCommand();
+                using var cmd = conn!.CreateCommand();
                 if (txn != null) cmd.Transaction = txn;
 
                 cmd.CommandText = @"

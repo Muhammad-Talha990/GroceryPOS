@@ -63,7 +63,17 @@ namespace GroceryPOS.ViewModels
         public string FormMinStockThreshold { get => _formMinStockThreshold; set => SetProperty(ref _formMinStockThreshold, value); }
 
         private bool _isEditing;
-        public bool IsEditing { get => _isEditing; set => SetProperty(ref _isEditing, value); }
+        public bool IsEditing 
+        { 
+            get => _isEditing; 
+            set 
+            { 
+                if (SetProperty(ref _isEditing, value))
+                    OnPropertyChanged(nameof(IsQuantityEditable));
+            } 
+        }
+
+        public bool IsQuantityEditable => !IsEditing;
 
         private string _statusMessage = string.Empty;
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
@@ -177,7 +187,7 @@ namespace GroceryPOS.ViewModels
                     CostPrice = double.Parse(FormCostPrice),
                     SalePrice = double.Parse(FormSalePrice),
                     ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
-                    StockQuantity = 0, // Initial stock must be added via Supply Registration
+                    StockQuantity = double.TryParse(FormStockQuantity, out var stock) ? stock : 0,
                     MinStockThreshold = double.Parse(FormMinStockThreshold)
                 };
 

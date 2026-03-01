@@ -43,6 +43,7 @@
                     <!-- Data Grid -->
                     <DataGrid ItemsSource="{Binding Products}"
                               SelectedItem="{Binding SelectedProduct}"
+                              SelectionMode="Single"
                               Style="{DynamicResource ModernDataGrid}"
                               ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}"
                               CellStyle="{DynamicResource ModernDataGridCell}">
@@ -111,7 +112,8 @@
                         <ComboBox Style="{DynamicResource ModernComboBox}"
                                   ItemsSource="{Binding Categories}"
                                   IsEditable="True"
-                                  Text="{Binding FormCategory}"
+                                  helpers:FocusHelper.MoveFocusOnEnter="True"
+                                  Text="{Binding FormCategory, UpdateSourceTrigger=PropertyChanged}"
                                   Margin="0,0,0,8"/>
 
                         <!-- Prices -->
@@ -141,10 +143,24 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="📦 Quantity" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
-                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormStockQuantity, UpdateSourceTrigger=PropertyChanged}"
-                                          IsReadOnly="True" Background="#F1F5F9"
-                                          ToolTip="Quantity can only be updated via Supply Registration or Sales."
-                                          helpers:FocusHelper.SelectAllOnFocus="True"/>
+                                <TextBox Text="{Binding FormStockQuantity, UpdateSourceTrigger=PropertyChanged}"
+                                          IsReadOnly="{Binding IsEditing}"
+                                          helpers:FocusHelper.SelectAllOnFocus="True">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                    <Setter Property="ToolTip" Value="Quantity can only be updated via Supply Registration or Sales."/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsEditing}" Value="False">
+                                                    <Setter Property="Background" Value="White"/>
+                                                    <Setter Property="ToolTip" Value="Enter initial stock quantity."/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="⚠️ Min. Threshold" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>

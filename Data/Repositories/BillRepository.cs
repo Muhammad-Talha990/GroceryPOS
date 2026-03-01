@@ -237,7 +237,7 @@ namespace GroceryPOS.Data.Repositories
 
             try
             {
-                using var cmd = conn.CreateCommand();
+                using var cmd = conn!.CreateCommand();
                 if (txn != null) cmd.Transaction = txn;
                 cmd.CommandText = "UPDATE Bill SET Status = @status WHERE bill_id = @id;";
                 cmd.Parameters.AddWithValue("@status", status);
@@ -248,6 +248,60 @@ namespace GroceryPOS.Data.Repositories
             {
                 if (manageConnection) conn?.Dispose();
             }
+        }
+
+        /// <summary>
+        /// Updates an existing bill in-place (same bill_id).
+        /// Deletes old line items, inserts new ones, and updates the bill header totals.
+        /// Must be called within an existing connection/transaction.
+        /// </summary>
+        public void UpdateBillInPlace(Bill bill, List<BillDescription> newItems, SqliteConnection conn, SqliteTransaction txn)
+        {
+            // 1. Delete old BillDescription rows
+            using var deleteCmd = conn.CreateCommand();
+            deleteCmd.Transaction = txn;
+            deleteCmd.CommandText = "DELETE FROM BillDescription WHERE Bill_id = @billId;";
+            deleteCmd.Parameters.AddWithValue("@billId", bill.BillId);
+            deleteCmd.ExecuteNonQuery();
+
+            // 2. Insert new BillDescription rows
+            foreach (var item in newItems)
+            {
+                item.BillId = bill.BillId;
+                using var itemCmd = conn.CreateCommand();
+                itemCmd.Transaction = txn;
+                itemCmd.CommandText = @"
+                    INSERT INTO BillDescription (Bill_id, ItemId, Quantity, UnitPrice, TotalPrice)
+                    VALUES (@billId, @itemId, @qty, @price, @total);";
+                itemCmd.Parameters.AddWithValue("@billId", item.BillId);
+                itemCmd.Parameters.AddWithValue("@itemId", item.ItemId);
+                itemCmd.Parameters.AddWithValue("@qty", item.Quantity);
+                itemCmd.Parameters.AddWithValue("@price", item.UnitPrice);
+                itemCmd.Parameters.AddWithValue("@total", item.TotalPrice);
+                itemCmd.ExecuteNonQuery();
+            }
+
+            // 3. Update the Bill header with new totals
+            using var updateCmd = conn.CreateCommand();
+            updateCmd.Transaction = txn;
+            updateCmd.CommandText = @"
+                UPDATE Bill SET 
+                    SubTotal = @sub, DiscountAmount = @disc, TaxAmount = @tax,
+                    GrandTotal = @grand, CashReceived = @cash, ChangeGiven = @change,
+                    BillDateTime = @dt
+                WHERE bill_id = @billId;";
+            updateCmd.Parameters.AddWithValue("@sub", bill.SubTotal);
+            updateCmd.Parameters.AddWithValue("@disc", bill.DiscountAmount);
+            updateCmd.Parameters.AddWithValue("@tax", bill.TaxAmount);
+            updateCmd.Parameters.AddWithValue("@grand", bill.GrandTotal);
+            updateCmd.Parameters.AddWithValue("@cash", bill.CashReceived);
+            updateCmd.Parameters.AddWithValue("@change", bill.ChangeGiven);
+            updateCmd.Parameters.AddWithValue("@dt", bill.BillDateTime.ToString("yyyy-MM-dd HH:mm:ss"));
+            updateCmd.Parameters.AddWithValue("@billId", bill.BillId);
+            updateCmd.ExecuteNonQuery();
+
+            bill.Items = newItems;
+            AppLogger.Info($"Bill updated in-place: ID={bill.BillId}");
         }
 
         public List<Bill> GetReturnsByParentId(int parentId)

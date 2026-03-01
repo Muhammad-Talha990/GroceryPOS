@@ -267,6 +267,15 @@ namespace GroceryPOS.ViewModels
 
                 DiscountAmount = Math.Round(discount, 2);
                 TaxAmount = Math.Round(tax, 2);
+
+                // Cap discount at SubTotal + Tax
+                double maxDiscount = Math.Round(SubTotal + TaxAmount, 2);
+                if (DiscountAmount > maxDiscount)
+                {
+                    DiscountAmount = maxDiscount;
+                    DiscountText = DiscountAmount.ToString("F2");
+                }
+
                 GrandTotal = Math.Round(SubTotal - DiscountAmount + TaxAmount, 2);
 
                 if (GrandTotal < 0) GrandTotal = 0;

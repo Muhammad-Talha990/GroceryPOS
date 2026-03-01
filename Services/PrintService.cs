@@ -18,7 +18,6 @@ namespace GroceryPOS.Services
         private Bill? _billToPrint;
         private List<Bill>? _returnHistoryToPrint;
         private Bill? _currentReturnBill;
-        private bool _isSummaryMode = false;
         private string _storeName = "GROCERY MART";
         private string _storeAddress = "Rawat, Rawalpindi, Pakistan";
         private string _storePhone = "0300-1234567";
@@ -106,7 +105,6 @@ namespace GroceryPOS.Services
                 _billToPrint = originalBill;
                 _returnHistoryToPrint = returns;
                 _cashierName = cashierName;
-                _isSummaryMode = true;
 
                 var printDoc = new PrintDocument();
                 string? targetPrinter = _preferredPrinter;
@@ -130,7 +128,6 @@ namespace GroceryPOS.Services
                 printDoc.PrintPage += PrintSummaryPage_Handler;
                 printDoc.Print();
 
-                _isSummaryMode = false;
                 _returnHistoryToPrint = null;
             }
             catch (Exception ex)
@@ -510,7 +507,7 @@ namespace GroceryPOS.Services
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
             // 4. Return Items Section
-            g.DrawString("RETURNED ITEMS HERE", boldFont, Brushes.Black, margin, y); y += 14;
+            g.DrawString("RETURNED ITEMS ", boldFont, Brushes.Black, margin, y); y += 14;
             g.DrawString("Item", boldFont, Brushes.Black, margin, y);
             g.DrawString("Qty", boldFont, Brushes.Black, 130, y);
             g.DrawString("Refund", boldFont, Brushes.Black, pageWidth, y, sfRight);

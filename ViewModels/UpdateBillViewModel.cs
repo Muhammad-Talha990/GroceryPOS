@@ -16,6 +16,7 @@ namespace GroceryPOS.ViewModels
         private readonly BillService _billService;
         private readonly AuthService _authService;
         private readonly ItemService _itemService;
+        private readonly PrintService _printService;
 
         private string _billIdInput = string.Empty;
         public string BillIdInput
@@ -61,7 +62,17 @@ namespace GroceryPOS.ViewModels
         public double GrandTotal { get => _grandTotal; set => SetProperty(ref _grandTotal, value); }
 
         private double _changeAmount;
-        public double ChangeAmount { get => _changeAmount; set => SetProperty(ref _changeAmount, value); }
+        public double ChangeAmount
+        {
+            get => _changeAmount;
+            set
+            {
+                if (SetProperty(ref _changeAmount, value))
+                    OnPropertyChanged(nameof(IsChangeNegative));
+            }
+        }
+
+        public bool IsChangeNegative => ChangeAmount < 0;
 
         private string _statusMessage = string.Empty;
         public string StatusMessage
@@ -75,12 +86,13 @@ namespace GroceryPOS.ViewModels
         public ICommand RemoveItemCommand { get; }
         public ICommand ClearFormCommand { get; }
 
-        public UpdateBillViewModel(IBillUpdateService updateService, BillService billService, AuthService authService, ItemService itemService)
+        public UpdateBillViewModel(IBillUpdateService updateService, BillService billService, AuthService authService, ItemService itemService, PrintService printService)
         {
             _updateService = updateService;
             _billService = billService;
             _authService = authService;
             _itemService = itemService;
+            _printService = printService;
 
             LoadBillCommand = new RelayCommand(async _ => await LoadBill());
             UpdateBillCommand = new RelayCommand(async _ => await ExecuteUpdate());
@@ -109,14 +121,21 @@ namespace GroceryPOS.ViewModels
                 Items.Clear();
                 foreach (var item in bill.Items)
                 {
-                    Items.Add(new BillDescription
+                    var desc = new BillDescription
                     {
                         ItemId = item.ItemId,
                         ItemDescription = item.ItemDescription,
                         Quantity = item.Quantity,
                         UnitPrice = item.UnitPrice,
                         TotalPrice = item.TotalPrice
-                    });
+                    };
+                    // Subscribe to quantity changes for live recalculation
+                    desc.PropertyChanged += (s, e) =>
+                    {
+                        if (e.PropertyName == nameof(BillDescription.Quantity) || e.PropertyName == nameof(BillDescription.TotalPrice))
+                            Recalculate();
+                    };
+                    Items.Add(desc);
                 }
 
                 Discount = bill.DiscountAmount;
@@ -159,6 +178,14 @@ namespace GroceryPOS.ViewModels
         private void Recalculate()
         {
             SubTotal = Items.Sum(i => i.Quantity * i.UnitPrice);
+            
+            // Cap discount at SubTotal + Tax
+            double maxDiscount = Math.Round(SubTotal + Tax, 2);
+            if (Discount > maxDiscount)
+            {
+                Discount = maxDiscount;
+            }
+
             GrandTotal = Math.Round(SubTotal - Discount + Tax, 2);
             ChangeAmount = Math.Round(CashReceived - GrandTotal, 2);
         }
@@ -170,7 +197,7 @@ namespace GroceryPOS.ViewModels
             try
             {
                 StatusMessage = "Updating bill...";
-                var newBill = await _updateService.UpdateBill(
+                var updatedBill = await _updateService.UpdateBill(
                     OriginalBill.BillId, 
                     Items.ToList(), 
                     Discount, 
@@ -179,8 +206,17 @@ namespace GroceryPOS.ViewModels
                     _authService.CurrentUser?.Id
                 );
 
-                StatusMessage = $"✓ Bill Updated! New Bill ID: {newBill.BillId}";
-                // Optionally clear or reload
+                StatusMessage = $"✓ Bill #{updatedBill.BillId} updated successfully!";
+
+                // Print updated receipt
+                try
+                {
+                    _printService.PrintReceipt(updatedBill, _authService.CurrentUser?.FullName ?? "Cashier");
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Print receipt after update failed", ex);
+                }
             }
             catch (BusinessException ex)
             {

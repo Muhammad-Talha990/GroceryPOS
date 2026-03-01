@@ -57,5 +57,37 @@ namespace GroceryPOS.Helpers
                 e.Handled = true;
             }
         }
+
+        // --- MoveFocusOnEnter Attached Property ---
+        public static readonly DependencyProperty MoveFocusOnEnterProperty =
+            DependencyProperty.RegisterAttached(
+                "MoveFocusOnEnter",
+                typeof(bool),
+                typeof(FocusHelper),
+                new PropertyMetadata(false, OnMoveFocusOnEnterChanged));
+
+        public static bool GetMoveFocusOnEnter(DependencyObject obj) => (bool)obj.GetValue(MoveFocusOnEnterProperty);
+        public static void SetMoveFocusOnEnter(DependencyObject obj, bool value) => obj.SetValue(MoveFocusOnEnterProperty, value);
+
+        private static void OnMoveFocusOnEnterChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is UIElement element)
+            {
+                if ((bool)e.NewValue)
+                    element.KeyDown += Element_KeyDown;
+                else
+                    element.KeyDown -= Element_KeyDown;
+            }
+        }
+
+        private static void Element_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                var element = sender as UIElement;
+                element?.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                e.Handled = true;
+            }
+        }
     }
 }

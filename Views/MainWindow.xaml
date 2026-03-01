@@ -97,8 +97,7 @@
                             Command="{Binding NavigateCommand}" CommandParameter="Returns"/>
 
                     <Button Content="✏️  Bill Correction" Style="{DynamicResource SidebarButton}"
-                            Command="{Binding NavigateCommand}" CommandParameter="BillUpdate"
-                            Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"/>
+                            Command="{Binding NavigateCommand}" CommandParameter="BillUpdate"/>
                 </StackPanel>
             </DockPanel>
         </Border>

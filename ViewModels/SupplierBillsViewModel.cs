@@ -19,6 +19,8 @@ namespace GroceryPOS.ViewModels
         private readonly IImageStorageService _imageService;
 
         public ObservableCollection<Stock> SupplyHistory { get; set; } = new();
+        public ObservableCollection<Item> ProductSearchResults { get; set; } = new();
+        public ObservableCollection<Item> MainProductSearchResults { get; set; } = new();
 
         private Stock? _selectedEntry;
         public Stock? SelectedEntry
@@ -42,9 +44,14 @@ namespace GroceryPOS.ViewModels
                 if (SetProperty(ref _searchBarcode, value))
                 {
                     if (string.IsNullOrWhiteSpace(value))
+                    {
+                        IsMainResultsOpen = false;
                         _ = LoadAllRecentSupplies();
-                    else if (value.Length >= 2)
-                        _ = ExecuteSearchItem();
+                    }
+                    else
+                    {
+                        _ = ExecuteLiveMainSearch();
+                    }
                 }
             } 
         }
@@ -76,6 +83,19 @@ namespace GroceryPOS.ViewModels
             set => SetProperty(ref _isImageAvailable, value);
         }
 
+        private BitmapImage? _formImagePreview;
+        public BitmapImage? FormImagePreview
+        {
+            get => _formImagePreview;
+            set
+            {
+                if (SetProperty(ref _formImagePreview, value))
+                {
+                    (SaveSupplyCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
         // --- Registration Form Fields ---
         private int _formQuantity;
         public int FormQuantity 
@@ -83,7 +103,8 @@ namespace GroceryPOS.ViewModels
             get => _formQuantity; 
             set
             {
-                if (SetProperty(ref _formQuantity, value))
+                int validatedValue = value < 1 ? 1 : value;
+                if (SetProperty(ref _formQuantity, validatedValue))
                 {
                     (SaveSupplyCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 }
@@ -96,8 +117,56 @@ namespace GroceryPOS.ViewModels
         private bool _isAddingNew;
         public bool IsAddingNew { get => _isAddingNew; set => SetProperty(ref _isAddingNew, value); }
 
+        private bool _isEditing;
+        public bool IsEditing { get => _isEditing; set => SetProperty(ref _isEditing, value); }
+
+        private bool _isSearchResultsOpen;
+        public bool IsSearchResultsOpen { get => _isSearchResultsOpen; set => SetProperty(ref _isSearchResultsOpen, value); }
+
+        private bool _isMainResultsOpen;
+        public bool IsMainResultsOpen { get => _isMainResultsOpen; set => SetProperty(ref _isMainResultsOpen, value); }
+
+        private Item? _selectedProductResult;
+        public Item? SelectedProductResult
+        {
+            get => _selectedProductResult;
+            set
+            {
+                if (SetProperty(ref _selectedProductResult, value) && value != null)
+                {
+                    ExecuteSelectProduct(value);
+                }
+            }
+        }
+
+        private Item? _selectedMainProductResult;
+        public Item? SelectedMainProductResult
+        {
+            get => _selectedMainProductResult;
+            set
+            {
+                if (SetProperty(ref _selectedMainProductResult, value) && value != null)
+                {
+                    ExecuteSelectMainProduct(value);
+                }
+            }
+        }
+
         private string _manualSearchBarcode = string.Empty;
-        public string ManualSearchBarcode { get => _manualSearchBarcode; set => SetProperty(ref _manualSearchBarcode, value); }
+        public string ManualSearchBarcode 
+        { 
+            get => _manualSearchBarcode; 
+            set 
+            { 
+                if (SetProperty(ref _manualSearchBarcode, value))
+                {
+                    if (string.IsNullOrWhiteSpace(value))
+                        IsSearchResultsOpen = false;
+                    else
+                        _ = ExecuteFindManualItem();
+                }
+            } 
+        }
 
         private DateTime _currentSystemDate;
         public DateTime CurrentSystemDate { get => _currentSystemDate; set => SetProperty(ref _currentSystemDate, value); }
@@ -110,25 +179,31 @@ namespace GroceryPOS.ViewModels
         public ICommand SelectImageCommand { get; }
         public ICommand SaveSupplyCommand { get; }
         public ICommand CancelAddCommand { get; }
-        public ICommand DeleteSupplyCommand { get; }
+        public ICommand UpdateSupplyCommand { get; }
         public ICommand FindManualItemCommand { get; }
+        public ICommand SelectProductCommand { get; }
+        public ICommand SelectMainProductCommand { get; }
         public ICommand RefreshCommand { get; }
         public ICommand ViewFullBillCommand { get; }
+        public ICommand ToggleSearchResultsCommand { get; }
 
         public SupplierBillsViewModel(IStockService stockService, IImageStorageService imageService)
         {
             _stockService = stockService;
             _imageService = imageService;
 
-            SearchItemCommand = new RelayCommand(async () => await ExecuteSearchItem());
+            SearchItemCommand = new RelayCommand(async () => await ExecuteExplicitSearchItem());
             ShowAddFormCommand = new RelayCommand(ExecuteShowAddForm);
             SelectImageCommand = new RelayCommand(ExecuteSelectImage);
-            SaveSupplyCommand = new RelayCommand(async () => await ExecuteSaveSupply(), () => FoundItem != null && FormQuantity > 0);
+            SaveSupplyCommand = new RelayCommand(async () => await ExecuteSaveSupply(), () => FoundItem != null && FormQuantity > 0 && FormImagePreview != null);
             CancelAddCommand = new RelayCommand(() => IsAddingNew = false);
-            DeleteSupplyCommand = new RelayCommand(async () => await ExecuteDeleteSupply(), () => SelectedEntry != null);
-            FindManualItemCommand = new RelayCommand(async () => await ExecuteFindManualItem());
+            UpdateSupplyCommand = new RelayCommand(async (s) => await ExecuteUpdateSupply(s as Stock));
+            FindManualItemCommand = new RelayCommand(async () => await ExecuteExplicitManualSearch());
+            SelectProductCommand = new RelayCommand((p) => ExecuteSelectProduct(p as Item));
+            SelectMainProductCommand = new RelayCommand((p) => ExecuteSelectMainProduct(p as Item));
             RefreshCommand = new RelayCommand(async () => await LoadAllRecentSupplies());
             ViewFullBillCommand = new RelayCommand(ExecuteViewFullBill, () => SelectedEntry != null && !string.IsNullOrEmpty(SelectedEntry.ImagePath));
+            ToggleSearchResultsCommand = new RelayCommand(() => ExecuteToggleSearchResults());
 
             // Subscribe to real-time stock changes
             _stockService.StockChanged += OnStockChanged;
@@ -181,8 +256,8 @@ namespace GroceryPOS.ViewModels
             IsAddingNew = true;
             
             // Reset form
-            FormQuantity = 0;
-            TempImagePath = string.Empty;
+            IsEditing = false;
+            ClearForm();
             ManualSearchBarcode = string.Empty;
             CurrentSystemDate = DateTime.Now;
             
@@ -196,8 +271,26 @@ namespace GroceryPOS.ViewModels
             }
         }
 
+        private async Task ExecuteExplicitSearchItem()
+        {
+            if (IsMainResultsOpen && MainProductSearchResults.Count > 0)
+            {
+                SelectedMainProductResult = MainProductSearchResults[0];
+            }
+            else
+            {
+                await ExecuteSearchItem();
+            }
+        }
+
         private async Task ExecuteSearchItem()
         {
+            if (string.IsNullOrWhiteSpace(SearchBarcode))
+            {
+                await LoadAllRecentSupplies();
+                return;
+            }
+
             try
             {
                 StatusMessage = "Searching...";
@@ -220,6 +313,7 @@ namespace GroceryPOS.ViewModels
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     };
                     await LoadSupplyHistory();
+                    SearchBarcode = FoundItem.Description; // Show full description after finding item
                 }
                 else
                 {
@@ -235,18 +329,26 @@ namespace GroceryPOS.ViewModels
             }
         }
 
-        private async Task ExecuteFindManualItem()
+        private async Task ExecuteUpdateSupply(Stock? entry)
         {
-            if (string.IsNullOrWhiteSpace(ManualSearchBarcode)) return;
+            if (entry == null) return;
             
             try
             {
-                StatusMessage = "Looking for item...";
+                StatusMessage = "Loading entry for update...";
+                
+                // 1. Setup Form State
+                IsEditing = true;
+                IsAddingNew = true;
+                FormQuantity = entry.Quantity;
+                TempImagePath = string.Empty;
+                ManualSearchBarcode = entry.ProductId;
+                
+                // 2. Fetch the item to show in form
                 using var conn = Data.DatabaseHelper.GetConnection();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid OR Description LIKE @name LIMIT 1;";
-                cmd.Parameters.AddWithValue("@bid", ManualSearchBarcode);
-                cmd.Parameters.AddWithValue("@name", $"%{ManualSearchBarcode}%");
+                cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid LIMIT 1;";
+                cmd.Parameters.AddWithValue("@bid", entry.ProductId);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (reader.Read())
@@ -257,12 +359,77 @@ namespace GroceryPOS.ViewModels
                         Description = reader.GetString(reader.GetOrdinal("Description")),
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     };
-                    StatusMessage = "Item confirmed: " + FoundItem.Description;
-                    await LoadSupplyHistory();
+                    ManualSearchBarcode = FoundItem.Description; // Show description in update modal box
+                    StatusMessage = "Editing supply for: " + FoundItem.Description;
+                    
+                    if (!string.IsNullOrEmpty(entry.ImagePath) && File.Exists(entry.ImagePath))
+                    {
+                        LoadFormImagePreview(entry.ImagePath);
+                    }
+                }
+                
+                SelectedEntry = entry; // Keep track of which entry we are editing
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to load supply for update", ex);
+                StatusMessage = "Error loading update form.";
+            }
+        }
+
+        private async Task ExecuteExplicitManualSearch()
+        {
+            if (IsSearchResultsOpen && ProductSearchResults.Count > 0)
+            {
+                SelectedProductResult = ProductSearchResults[0];
+            }
+            else
+            {
+                await ExecuteFindManualItem();
+            }
+        }
+
+        private async Task ExecuteFindManualItem(string? filter = null)
+        {
+            try
+            {
+                string queryText = filter ?? ManualSearchBarcode;
+                StatusMessage = "Looking for items...";
+                using var conn = Data.DatabaseHelper.GetConnection();
+                using var cmd = conn.CreateCommand();
+                
+                if (string.IsNullOrWhiteSpace(queryText))
+                {
+                    cmd.CommandText = "SELECT * FROM Item ORDER BY Description LIMIT 50;";
                 }
                 else
                 {
-                    StatusMessage = "Item not found. Please try another barcode.";
+                    cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid OR Description LIKE @name LIMIT 50;";
+                    cmd.Parameters.AddWithValue("@bid", queryText);
+                    cmd.Parameters.AddWithValue("@name", $"%{queryText}%");
+                }
+
+                ProductSearchResults.Clear();
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (reader.Read())
+                {
+                    ProductSearchResults.Add(new Item
+                    {
+                        ItemId = reader.GetString(reader.GetOrdinal("itemId")),
+                        Description = reader.GetString(reader.GetOrdinal("Description")),
+                        StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
+                    });
+                }
+
+                if (ProductSearchResults.Count > 0)
+                {
+                    IsSearchResultsOpen = true;
+                    StatusMessage = $"Found {ProductSearchResults.Count} matching items.";
+                }
+                else
+                {
+                    IsSearchResultsOpen = false;
+                    StatusMessage = "No matching items found.";
                 }
             }
             catch (Exception ex)
@@ -270,6 +437,74 @@ namespace GroceryPOS.ViewModels
                 AppLogger.Error("Manual search failed", ex);
                 StatusMessage = "Error finding item.";
             }
+        }
+
+        private async Task ExecuteToggleSearchResults()
+        {
+            if (IsSearchResultsOpen)
+            {
+                IsSearchResultsOpen = false;
+            }
+            else
+            {
+                // When toggling manually, if we have a full description, show all to allow selection of another
+                bool isFullDescription = FoundItem != null && ManualSearchBarcode == FoundItem.Description;
+                await ExecuteFindManualItem(isFullDescription ? "" : null);
+                IsSearchResultsOpen = ProductSearchResults.Count > 0;
+            }
+        }
+
+        private async Task ExecuteLiveMainSearch()
+        {
+            if (string.IsNullOrWhiteSpace(SearchBarcode)) return;
+
+            try
+            {
+                using var conn = Data.DatabaseHelper.GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid OR Description LIKE @name LIMIT 10;";
+                cmd.Parameters.AddWithValue("@bid", SearchBarcode);
+                cmd.Parameters.AddWithValue("@name", $"%{SearchBarcode}%");
+
+                MainProductSearchResults.Clear();
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (reader.Read())
+                {
+                    MainProductSearchResults.Add(new Item
+                    {
+                        ItemId = reader.GetString(reader.GetOrdinal("itemId")),
+                        Description = reader.GetString(reader.GetOrdinal("Description")),
+                        StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
+                    });
+                }
+
+                IsMainResultsOpen = MainProductSearchResults.Count > 0;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Live main search failed", ex);
+            }
+        }
+
+        private void ExecuteSelectMainProduct(Item? item)
+        {
+            if (item == null) return;
+            
+            FoundItem = item;
+            SearchBarcode = item.Description; // Show full description in search box
+            IsMainResultsOpen = false;
+            _ = LoadSupplyHistory();
+        }
+
+        private void ExecuteSelectProduct(Item? item)
+        {
+            if (item == null) return;
+            
+            FoundItem = item;
+            ManualSearchBarcode = item.Description; // Show full description in search box
+            IsSearchResultsOpen = false;
+            StatusMessage = "Item selected: " + item.Description;
+            _ = LoadSupplyHistory();
         }
 
         private async Task LoadSupplyHistory()
@@ -301,6 +536,26 @@ namespace GroceryPOS.ViewModels
             {
                 TempImagePath = openFileDialog.FileName;
                 StatusMessage = "Image selected: " + Path.GetFileName(TempImagePath);
+                LoadFormImagePreview(TempImagePath);
+            }
+        }
+
+        private void LoadFormImagePreview(string path)
+        {
+            try
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(path);
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                FormImagePreview = bitmap;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Error loading form image preview", ex);
+                FormImagePreview = null;
             }
         }
 
@@ -315,40 +570,32 @@ namespace GroceryPOS.ViewModels
                     Quantity = FormQuantity
                 };
 
-                await _stockService.RegisterSupplyAsync(entry, TempImagePath);
+                if (IsEditing && SelectedEntry != null)
+                {
+                    entry.Id = SelectedEntry.Id;
+                    await _stockService.UpdateSupplyAsync(entry, TempImagePath);
+                    StatusMessage = "Supply updated successfully!";
+                }
+                else
+                {
+                    await _stockService.RegisterSupplyAsync(entry, TempImagePath);
+                    StatusMessage = "Supply registered successfully!";
+                }
                 
                 IsAddingNew = false;
-                await ExecuteSearchItem(); // Refresh item data and history
-                StatusMessage = "Supply registered successfully!";
+                
+                // Refresh logic: If searching, refresh that item. If not, refresh all recent.
+                if (string.IsNullOrWhiteSpace(SearchBarcode))
+                    await LoadAllRecentSupplies();
+                else
+                    await ExecuteSearchItem(); 
+
                 ClearForm();
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Failed to save supply", ex);
                 MessageBox.Show("Error registration supply: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        private async Task ExecuteDeleteSupply()
-        {
-            if (SelectedEntry == null) return;
-
-            var result = MessageBox.Show($"Are you sure you want to delete this supply entry of {SelectedEntry.Quantity} units?\n\nThis will also revert the stock quantity of the item.", 
-                                       "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            
-            if (result != MessageBoxResult.Yes) return;
-
-            try
-            {
-                StatusMessage = "Deleting...";
-                await _stockService.DeleteSupplyAsync(SelectedEntry.Id);
-                await ExecuteSearchItem(); // Refresh
-                StatusMessage = "Supply deleted successfully.";
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error("Failed to delete supply", ex);
-                MessageBox.Show("Error deleting supply: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -382,6 +629,7 @@ namespace GroceryPOS.ViewModels
         {
             FormQuantity = 0;
             TempImagePath = string.Empty;
+            FormImagePreview = null;
         }
 
         private void LoadImagePreview(string? path)

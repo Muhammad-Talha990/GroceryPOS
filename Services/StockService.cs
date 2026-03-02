@@ -153,6 +153,102 @@ namespace GroceryPOS.Services
             return history;
         }
 
+        public async Task<bool> UpdateSupplyAsync(Stock entry, string? tempImagePath)
+        {
+            using var conn = Data.DatabaseHelper.GetConnection();
+            
+            // 1. Fetch existing entry to calculate difference
+            Stock? existing = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT * FROM stock WHERE Id = @id;";
+                cmd.Parameters.AddWithValue("@id", entry.Id);
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    if (reader.Read())
+                    {
+                        existing = new Stock
+                        {
+                            Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                            ProductId = reader.GetString(reader.GetOrdinal("product_id")),
+                            BillId = reader.GetString(reader.GetOrdinal("bill_id")),
+                            Quantity = reader.GetInt32(reader.GetOrdinal("quantity")),
+                            ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path"))
+                        };
+                    }
+                }
+            }
+
+            if (existing == null) throw new InvalidOperationException("Supply record not found.");
+
+            // 2. Process Image (if new image provided)
+            string? permanentImagePath = existing.ImagePath;
+            if (!string.IsNullOrEmpty(tempImagePath))
+            {
+                // Delete old image if it exists
+                if (!string.IsNullOrEmpty(existing.BillId))
+                {
+                    _imageService.DeleteBillImage(existing.BillId);
+                }
+                
+                // Save new image
+                permanentImagePath = await _imageService.SaveBillImageAsync(tempImagePath, existing.BillId);
+                entry.ImagePath = permanentImagePath;
+            }
+
+            double qtyDifference = entry.Quantity - existing.Quantity;
+
+            using var transaction = conn.BeginTransaction();
+            try
+            {
+                // 3. Update stock table
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = transaction;
+                    cmd.CommandText = @"
+                        UPDATE stock 
+                        SET quantity = @qty, image_path = @img 
+                        WHERE Id = @id;
+                    ";
+                    cmd.Parameters.AddWithValue("@qty", entry.Quantity);
+                    cmd.Parameters.AddWithValue("@img", (object?)permanentImagePath ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@id", entry.Id);
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 4. Update Main Product Stock
+                if (qtyDifference != 0)
+                {
+                    using (var updateCmd = conn.CreateCommand())
+                    {
+                        updateCmd.Transaction = transaction;
+                        updateCmd.CommandText = "UPDATE Item SET StockQuantity = StockQuantity + @diff WHERE itemId = @pid;";
+                        updateCmd.Parameters.AddWithValue("@diff", qtyDifference);
+                        updateCmd.Parameters.AddWithValue("@pid", entry.ProductId);
+                        updateCmd.ExecuteNonQuery();
+                    }
+                }
+
+                transaction.Commit();
+
+                // 5. Update Cache & UI
+                if (qtyDifference != 0)
+                {
+                    _cache.UpdateStockInCache(entry.ProductId, qtyDifference);
+                }
+                StockChanged?.Invoke();
+
+                AppLogger.Info($"Supply updated: ID {entry.Id}, New Qty: {entry.Quantity} (Diff: {qtyDifference}). Bill ID: {existing.BillId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                AppLogger.Error($"Failed to update supply {entry.Id}", ex);
+                throw;
+            }
+        }
+
         public async Task<List<Stock>> GetAllRecentSuppliesAsync(int limit = 50)
         {
             var history = new List<Stock>();

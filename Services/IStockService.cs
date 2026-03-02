@@ -15,6 +15,7 @@ namespace GroceryPOS.Services
         Task<bool> RegisterSupplyAsync(Stock entry, string? tempImagePath);
         Task<List<Stock>> GetSupplyHistoryAsync(string productId);
         Task<List<Stock>> GetAllRecentSuppliesAsync(int limit = 50);
+        Task<bool> UpdateSupplyAsync(Stock entry, string? tempImagePath);
         Task<bool> DeleteSupplyAsync(int stockId);
         
         bool IsStockAvailable(string barcode, double requiredQuantity, out double availableQuantity);

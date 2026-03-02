@@ -128,6 +128,7 @@
                         <TextBox Grid.Column="0" Style="{DynamicResource ModernTextBox}"
                                  Text="{Binding BarcodeInput, UpdateSourceTrigger=PropertyChanged}"
                                  FontSize="18" Margin="0,0,10,0"
+                                 helpers:FocusHelper.NumericOnly="True"
                                  x:Name="BarcodeTextBox" Tag="Barcode">
                             <TextBox.InputBindings>
                                 <KeyBinding Key="Return" Command="{Binding ScanBarcodeCommand}"/>
@@ -215,12 +216,14 @@
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="Discount (Rs.)" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,6"/>
                             <TextBox Style="{DynamicResource ModernTextBox}"
+                                     helpers:FocusHelper.DecimalOnly="True"
                                      Text="{Binding DiscountText, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
 
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="Tax (Rs.)" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,6"/>
                             <TextBox Style="{DynamicResource ModernTextBox}"
+                                     helpers:FocusHelper.DecimalOnly="True"
                                      Text="{Binding TaxText, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
                     </Grid>
@@ -243,6 +246,7 @@
                     <!-- Cash Received -->
                     <TextBlock Text="Cash Received (Rs.)" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"/>
                     <TextBox Style="{DynamicResource ModernTextBox}" FontSize="18" FontWeight="Bold"
+                             helpers:FocusHelper.DecimalOnly="True"
                              Text="{Binding CashReceivedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
 
                     <!-- Change -->
@@ -284,8 +288,19 @@
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" Content="🖨️ Print Last" Style="{DynamicResource AccentButton}"
                                 Command="{Binding PrintReceiptCommand}" Padding="0,12" FontSize="13"/>
-                        <Button Grid.Column="2" Content="🗑️ Clear Cart" Style="{DynamicResource DangerButton}"
-                                Command="{Binding ClearCartCommand}" Padding="0,12" FontSize="13" Background="#F1F5F9" Foreground="#EF4444"/>
+                        <Button Grid.Column="2" Content="🗑️ Clear Cart" Command="{Binding ClearCartCommand}" Padding="0,12" FontSize="13">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource DangerButton}">
+                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                    <Setter Property="Foreground" Value="#EF4444"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </Grid>
                 </StackPanel>
             </ScrollViewer>

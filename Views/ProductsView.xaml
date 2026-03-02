@@ -105,7 +105,10 @@
 
                         <!-- Barcode -->
                         <TextBlock Text="🏷️ Barcode" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
-                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormBarcode, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" 
+                                 Text="{Binding FormBarcode, UpdateSourceTrigger=PropertyChanged}" 
+                                 helpers:FocusHelper.NumericOnly="True"
+                                 Margin="0,0,0,8"/>
 
                         <!-- Category -->
                         <TextBlock Text="📂 Category *" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
@@ -113,6 +116,7 @@
                                   ItemsSource="{Binding Categories}"
                                   IsEditable="True"
                                   helpers:FocusHelper.MoveFocusOnEnter="True"
+                                  helpers:FocusHelper.LettersOnly="True"
                                   Text="{Binding FormCategory, UpdateSourceTrigger=PropertyChanged}"
                                   Margin="0,0,0,8"/>
 
@@ -125,11 +129,15 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="💰 Cost (Rs.)" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
-                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormCostPrice, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBox Style="{DynamicResource ModernTextBox}" 
+                                         helpers:FocusHelper.DecimalOnly="True"
+                                         Text="{Binding FormCostPrice, UpdateSourceTrigger=PropertyChanged}"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="💵 Sale (Rs.)" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
-                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormSalePrice, UpdateSourceTrigger=PropertyChanged}"/>
+                                <TextBox Style="{DynamicResource ModernTextBox}" 
+                                         helpers:FocusHelper.DecimalOnly="True"
+                                         Text="{Binding FormSalePrice, UpdateSourceTrigger=PropertyChanged}"/>
                             </StackPanel>
                         </Grid>
 
@@ -145,6 +153,7 @@
                                 <TextBlock Text="📦 Quantity" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                 <TextBox Text="{Binding FormStockQuantity, UpdateSourceTrigger=PropertyChanged}"
                                           IsReadOnly="{Binding IsEditing}"
+                                          helpers:FocusHelper.DecimalOnly="True"
                                           helpers:FocusHelper.SelectAllOnFocus="True">
                                     <TextBox.Style>
                                         <Style TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
@@ -164,7 +173,9 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="⚠️ Min. Threshold" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
-                                <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormMinStockThreshold, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox Style="{DynamicResource ModernTextBox}" 
+                                          helpers:FocusHelper.DecimalOnly="True"
+                                          Text="{Binding FormMinStockThreshold, UpdateSourceTrigger=PropertyChanged}"
                                           helpers:FocusHelper.SelectAllOnFocus="True"/>
                             </StackPanel>
                         </Grid>

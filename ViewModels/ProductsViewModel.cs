@@ -96,7 +96,7 @@ namespace GroceryPOS.ViewModels
             UpdateCommand = new RelayCommand(UpdateProduct);
             DeleteCommand = new RelayCommand(DeleteProduct);
             ClearFormCommand = new RelayCommand(ClearForm);
-            RefreshCommand = new RelayCommand(LoadProducts);
+            RefreshCommand = new RelayCommand(ExecuteRefreshProducts);
 
             // Subscribe to real-time stock updates
             _stockService.StockChanged += LoadProducts;
@@ -131,6 +131,12 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("LoadProducts failed", ex);
             }
+        }
+
+        private void ExecuteRefreshProducts()
+        {
+            SearchText = string.Empty;
+            // LoadProducts() is called by the SearchText setter
         }
 
         private void ClearForm()

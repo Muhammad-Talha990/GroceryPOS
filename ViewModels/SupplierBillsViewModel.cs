@@ -235,6 +235,11 @@ namespace GroceryPOS.ViewModels
             try
             {
                 StatusMessage = "Loading recent supplies...";
+                // Clear search state silently to avoid infinite recursion
+                _searchBarcode = string.Empty;
+                OnPropertyChanged(nameof(SearchBarcode));
+                FoundItem = null;
+                
                 var allSupplies = await _stockService.GetAllRecentSuppliesAsync(50);
                 SupplyHistory.Clear();
                 foreach (var entry in allSupplies) SupplyHistory.Add(entry);
@@ -313,7 +318,10 @@ namespace GroceryPOS.ViewModels
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     };
                     await LoadSupplyHistory();
-                    SearchBarcode = FoundItem.Description; // Show full description after finding item
+                    
+                    // Clear search bar silently to keep filtered list
+                    _searchBarcode = string.Empty;
+                    OnPropertyChanged(nameof(SearchBarcode));
                 }
                 else
                 {
@@ -491,7 +499,9 @@ namespace GroceryPOS.ViewModels
             if (item == null) return;
             
             FoundItem = item;
-            SearchBarcode = item.Description; // Show full description in search box
+            // Clear search bar silently to keep filtered list
+            _searchBarcode = string.Empty;
+            OnPropertyChanged(nameof(SearchBarcode));
             IsMainResultsOpen = false;
             _ = LoadSupplyHistory();
         }
@@ -501,7 +511,7 @@ namespace GroceryPOS.ViewModels
             if (item == null) return;
             
             FoundItem = item;
-            ManualSearchBarcode = item.Description; // Show full description in search box
+            ManualSearchBarcode = item.Description; 
             IsSearchResultsOpen = false;
             StatusMessage = "Item selected: " + item.Description;
             _ = LoadSupplyHistory();

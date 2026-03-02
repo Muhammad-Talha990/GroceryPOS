@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:converters="clr-namespace:GroceryPOS.Converters"
+             xmlns:helpers="clr-namespace:GroceryPOS.Helpers"
              mc:Ignorable="d" 
              Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
     <UserControl.Resources>
@@ -103,6 +104,8 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBox Text="{Binding ReturnQuantity, UpdateSourceTrigger=PropertyChanged}" 
+                                             helpers:FocusHelper.SelectAllOnFocus="True"
+                                             helpers:FocusHelper.DecimalOnly="True"
                                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                              FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"
                                              Background="Transparent" BorderThickness="1" 
@@ -139,10 +142,11 @@
                     </DataGridTextColumn>
                     <DataGridTextColumn Header="Date/Time" Binding="{Binding ReturnDate}" Width="160"/>
                     <DataGridTextColumn Header="Item" Binding="{Binding ProductId}" Width="150"/>
-                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="60">
+                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="75">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="HorizontalAlignment" Value="Center"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>

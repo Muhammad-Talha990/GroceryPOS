@@ -171,10 +171,18 @@
                             <DataGridTextColumn Header="Product" Binding="{Binding ItemDescription}" Width="*" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="120" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice, StringFormat='Rs.{0:N0}'}" Width="90" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="60" IsReadOnly="False">
+                            <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="75" IsReadOnly="False">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
                                 <DataGridTextColumn.EditingElementStyle>
                                     <Style TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
                                         <Setter Property="helpers:FocusHelper.SelectAllOnFocus" Value="True"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                        <Setter Property="Padding" Value="2,4"/>
                                     </Style>
                                 </DataGridTextColumn.EditingElementStyle>
                             </DataGridTextColumn>

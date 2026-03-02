@@ -31,28 +31,28 @@ namespace GroceryPOS.Helpers
             {
                 if ((bool)e.NewValue)
                 {
-                    textBox.GotFocus += TextBox_GotFocus;
+                    textBox.GotKeyboardFocus += TextBox_GotKeyboardFocus;
                     textBox.PreviewMouseLeftButtonDown += TextBox_PreviewMouseLeftButtonDown;
                 }
                 else
                 {
-                    textBox.GotFocus -= TextBox_GotFocus;
+                    textBox.GotKeyboardFocus -= TextBox_GotKeyboardFocus;
                     textBox.PreviewMouseLeftButtonDown -= TextBox_PreviewMouseLeftButtonDown;
                 }
             }
         }
 
-        private static void TextBox_GotFocus(object sender, RoutedEventArgs e)
+        private static void TextBox_GotKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
         {
             if (sender is TextBox textBox)
             {
-                textBox.SelectAll();
+                textBox.Dispatcher.BeginInvoke(new System.Action(() => textBox.SelectAll()));
             }
         }
 
         private static void TextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (sender is TextBox textBox && !textBox.IsFocused)
+            if (sender is TextBox textBox && !textBox.IsKeyboardFocusWithin)
             {
                 textBox.Focus();
                 e.Handled = true;

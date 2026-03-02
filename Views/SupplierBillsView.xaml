@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:GroceryPOS.Views"
              xmlns:conv="clr-namespace:GroceryPOS.Converters"
+             xmlns:helpers="clr-namespace:GroceryPOS.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="700" d:DesignWidth="1100"
              Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
@@ -397,6 +398,7 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock Text="QUANTITY" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,8"/>
                                     <TextBox Style="{DynamicResource ModernTextBox}" 
+                                             helpers:FocusHelper.SelectAllOnFocus="True"
                                              Text="{Binding FormQuantity, UpdateSourceTrigger=PropertyChanged}" 
                                              FontSize="15" FontWeight="Bold" Padding="12,8" TextAlignment="Center"
                                              PreviewTextInput="Quantity_PreviewTextInput"

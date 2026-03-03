@@ -117,6 +117,9 @@ namespace GroceryPOS.ViewModels
 
         public bool IsChangeNegative => ChangeAmount < 0;
         
+        private DateTime _currentTime = DateTime.Now;
+        public DateTime CurrentTime { get => _currentTime; set => SetProperty(ref _currentTime, value); }
+        
         private string _currentDateTime = DateTime.Now.ToString("dddd, dd MMMM yyyy HH:mm:ss");
         public string CurrentDateTime { get => _currentDateTime; set => SetProperty(ref _currentDateTime, value); }
 
@@ -124,6 +127,13 @@ namespace GroceryPOS.ViewModels
 
         private string _statusMessage = string.Empty;
         public string StatusMessage { get => _statusMessage; set => SetProperty(ref _statusMessage, value); }
+
+        private bool _isPreviewVisible = false;
+        public bool IsPreviewVisible { get => _isPreviewVisible; set => SetProperty(ref _isPreviewVisible, value); }
+
+        public string StoreName => "GROCERY MART";
+        public string StoreAddress => "Rawat, Rawalpindi, Pakistan";
+        public string StorePhone => "0300-1234567";
 
         private CartItem? _selectedCartItem;
         public CartItem? SelectedCartItem { get => _selectedCartItem; set => SetProperty(ref _selectedCartItem, value); }
@@ -137,6 +147,7 @@ namespace GroceryPOS.ViewModels
         public ICommand PrintReceiptCommand { get; }
         public ICommand AddTabCommand { get; }
         public ICommand CloseTabCommand { get; }
+        public ICommand TogglePreviewCommand { get; }
 
         private Bill? _lastBill;
 
@@ -157,6 +168,7 @@ namespace GroceryPOS.ViewModels
             PrintReceiptCommand = new RelayCommand(PrintLastReceipt);
             AddTabCommand = new RelayCommand(AddNewTab);
             CloseTabCommand = new RelayCommand(CloseTab);
+            TogglePreviewCommand = new RelayCommand(() => IsPreviewVisible = !IsPreviewVisible);
 
             LoadItems();
             
@@ -168,7 +180,10 @@ namespace GroceryPOS.ViewModels
 
             _timer = new System.Windows.Threading.DispatcherTimer();
             _timer.Interval = TimeSpan.FromSeconds(1);
-            _timer.Tick += (s, e) => CurrentDateTime = DateTime.Now.ToString("dddd, dd MMMM yyyy HH:mm:ss");
+            _timer.Tick += (s, e) => {
+                CurrentTime = DateTime.Now;
+                CurrentDateTime = CurrentTime.ToString("dddd, dd MMMM yyyy HH:mm:ss");
+            };
             _timer.Start();
         }
 
@@ -267,14 +282,6 @@ namespace GroceryPOS.ViewModels
 
                 DiscountAmount = Math.Round(discount, 2);
                 TaxAmount = Math.Round(tax, 2);
-
-                // Cap discount at SubTotal + Tax
-                double maxDiscount = Math.Round(SubTotal + TaxAmount, 2);
-                if (DiscountAmount > maxDiscount)
-                {
-                    DiscountAmount = maxDiscount;
-                    DiscountText = DiscountAmount.ToString("F2");
-                }
 
                 GrandTotal = Math.Round(SubTotal - DiscountAmount + TaxAmount, 2);
 

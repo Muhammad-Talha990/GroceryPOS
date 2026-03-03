@@ -208,8 +208,19 @@ namespace GroceryPOS.Helpers
             // Allow digits
             if (e.Text.All(char.IsDigit)) return;
 
+            // Get current decimal separator
+            string separator = System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+
             // Allow a single decimal point
-            if (e.Text == "." && !textBox.Text.Contains(".")) return;
+            if (e.Text == separator)
+            {
+                // If there's no dot already, or the current selection includes the dot (meaning it's being replaced)
+                if (!textBox.Text.Contains(separator) || 
+                    textBox.SelectedText.Contains(separator))
+                {
+                    return;
+                }
+            }
 
             e.Handled = true;
         }

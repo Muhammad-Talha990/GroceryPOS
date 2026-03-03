@@ -22,6 +22,20 @@ namespace GroceryPOS.Models
             set => SetProperty(ref _invoiceNumber, value);
         }
 
+        private int? _customerId;
+        public int? CustomerId
+        {
+            get => _customerId;
+            set => SetProperty(ref _customerId, value);
+        }
+
+        private Customer? _customer;
+        public Customer? Customer
+        {
+            get => _customer;
+            set => SetProperty(ref _customer, value);
+        }
+
         public ObservableCollection<CartItem> CartItems { get; set; } = new();
 
         private string _discountText = "0";

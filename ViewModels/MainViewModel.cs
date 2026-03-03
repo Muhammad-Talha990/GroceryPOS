@@ -87,6 +87,7 @@ namespace GroceryPOS.ViewModels
             _selectedMenu = view;
             OnPropertyChanged(nameof(SelectedMenu));
 
+            var oldView = _currentView;
             CurrentView = view switch
             {
                 "Dashboard" => _serviceProvider.GetRequiredService<DashboardViewModel>(),
@@ -96,9 +97,11 @@ namespace GroceryPOS.ViewModels
                 "Backup"    => _serviceProvider.GetRequiredService<BackupViewModel>(),
                 "SupplierBills" => _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
                 "Returns" => _serviceProvider.GetRequiredService<ReturnViewModel>(),
+                "PendingPrints" => _serviceProvider.GetRequiredService<PendingPrintsViewModel>(),
                 _ => _serviceProvider.GetRequiredService<DashboardViewModel>()
             };
 
+            oldView?.Dispose();
         }
 
         private void ExecuteLogout()

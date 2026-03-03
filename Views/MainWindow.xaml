@@ -32,6 +32,9 @@
         <DataTemplate DataType="{x:Type vm:ReturnViewModel}">
             <local:ReturnView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PendingPrintsViewModel}">
+            <local:PendingPrintsView/>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -92,6 +95,9 @@
 
                     <Button Content="🔄  Returns" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="Returns"/>
+
+                    <Button Content="🖨️  Pending Prints" Style="{DynamicResource SidebarButton}"
+                            Command="{Binding NavigateCommand}" CommandParameter="PendingPrints"/>
                 </StackPanel>
             </DockPanel>
         </Border>

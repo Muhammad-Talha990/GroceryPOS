@@ -43,7 +43,7 @@ namespace GroceryPOS.Services
         /// <param name="taxAmount">Flat tax amount.</param>
         /// <param name="cashReceived">Cash received from customer.</param>
         /// <returns>The completed Bill with generated BillId.</returns>
-        public Bill CompleteBill(int? userId, List<BillDescription> items,
+        public Bill CompleteBill(int? userId, int? customerId, List<BillDescription> items,
             double discountAmount, double taxAmount, double cashReceived)
         {
             // ── Validate inputs ──
@@ -86,7 +86,8 @@ namespace GroceryPOS.Services
                 GrandTotal = grandTotal,
                 CashReceived = cashReceived,
                 ChangeGiven = changeGiven,
-                UserId = userId
+                UserId = userId,
+                CustomerId = customerId
             };
 
             // ── Save atomically (bill + items + stock) ──
@@ -115,6 +116,10 @@ namespace GroceryPOS.Services
         public int GetTodayBillCount() => _billRepo.GetTodayCount();
 
         public Bill? GetBillById(int billId) => _billRepo.GetById(billId);
+
+        public Bill? GetLatestBillByCustomer(int customerId) => _billRepo.GetLatestBillByCustomerId(customerId);
+
+        public List<Bill> GetBillsByCustomerId(int customerId) => _billRepo.GetBillsByCustomerId(customerId);
 
         public string GetNextInvoiceNumber()
         {

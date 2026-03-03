@@ -67,7 +67,9 @@ namespace GroceryPOS.Data
                             CashReceived    REAL,
                             ChangeGiven     REAL,
                             UserId          INTEGER,
-                            FOREIGN KEY (UserId) REFERENCES User(Id)
+                            CustomerId      INTEGER,
+                            FOREIGN KEY (UserId) REFERENCES User(Id),
+                            FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId)
                         );
                     ");
 
@@ -102,6 +104,32 @@ namespace GroceryPOS.Data
                     ");
 
                     // ══════════════════════════════════════════
+                    //  TABLE 8: Customers (customer management)
+                    // ══════════════════════════════════════════
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS Customers (
+                            CustomerId      INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Name            TEXT    NOT NULL,
+                            PrimaryPhone    TEXT    NOT NULL UNIQUE,
+                            Address         TEXT,
+                            CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+                        );
+                    ");
+
+                    // ══════════════════════════════════════════
+                    //  TABLE 9: CustomerPhones (multiple phones)
+                    // ══════════════════════════════════════════
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS CustomerPhones (
+                            PhoneId         INTEGER PRIMARY KEY AUTOINCREMENT,
+                            CustomerId      INTEGER NOT NULL,
+                            PhoneNumber     TEXT    NOT NULL,
+                            IsPrimary       INTEGER NOT NULL DEFAULT 0,
+                            FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId) ON DELETE CASCADE
+                        );
+                    ");
+
+                    // ══════════════════════════════════════════
                     //  TABLE 7: BILL_RETURNS (Return tracking)
                     // ══════════════════════════════════════════
                     Execute(conn, @"
@@ -118,6 +146,16 @@ namespace GroceryPOS.Data
                         );
                     ");
 
+                    // ── Migration: Add StockQuantity and MinStockThreshold if they don't exist ──
+                    AddColumnIfNotExists(conn, "Item", "StockQuantity", "REAL NOT NULL DEFAULT 0");
+                    AddColumnIfNotExists(conn, "Item", "MinStockThreshold", "REAL NOT NULL DEFAULT 10");
+
+                    // ── Migration: Add image_path to stock table if it doesn't exist ──
+                    AddColumnIfNotExists(conn, "stock", "image_path", "TEXT");
+
+                    // ── Migration: Customer Management (Add column before index) ──
+                    AddColumnIfNotExists(conn, "Bill", "CustomerId", "INTEGER");
+
                     // ══════════════════════════════════════════
                     //  INDEXES for query optimization
                     // ══════════════════════════════════════════
@@ -131,13 +169,9 @@ namespace GroceryPOS.Data
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_Date              ON stock(system_date);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_BillId      ON BILL_RETURNS(bill_id);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_ProductId   ON BILL_RETURNS(product_id);");
-
-                    // ── Migration: Add StockQuantity and MinStockThreshold if they don't exist ──
-                    AddColumnIfNotExists(conn, "Item", "StockQuantity", "REAL NOT NULL DEFAULT 0");
-                    AddColumnIfNotExists(conn, "Item", "MinStockThreshold", "REAL NOT NULL DEFAULT 10");
-
-                    // ── Migration: Add image_path to stock table if it doesn't exist ──
-                    AddColumnIfNotExists(conn, "stock", "image_path", "TEXT");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Customers_Phone         ON Customers(PrimaryPhone);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_CustPhones_Phone        ON CustomerPhones(PhoneNumber);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_CustomerId         ON Bill(CustomerId);");
 
                     // ── Migration: Add Status and ReferenceBillId to Bill table ──
                     AddColumnIfNotExists(conn, "Bill", "Status", "TEXT DEFAULT 'Completed'");
@@ -146,6 +180,11 @@ namespace GroceryPOS.Data
                     // ── Migration: Professional Return System (Type and ParentBillId) ──
                     AddColumnIfNotExists(conn, "Bill", "Type", "TEXT DEFAULT 'Sale'");
                     AddColumnIfNotExists(conn, "Bill", "ParentBillId", "INTEGER");
+
+                    // ── Migration: Robust Printing System (Print tracking) ──
+                    AddColumnIfNotExists(conn, "Bill", "IsPrinted", "INTEGER DEFAULT 0");
+                    AddColumnIfNotExists(conn, "Bill", "PrintedAt", "TEXT");
+                    AddColumnIfNotExists(conn, "Bill", "PrintAttempts", "INTEGER DEFAULT 0");
 
                     // Sync old status to type if newly added
                     Execute(conn, "UPDATE Bill SET Type = 'Return' WHERE Status = '*** RETURN BILL ***' AND Type = 'Sale';");

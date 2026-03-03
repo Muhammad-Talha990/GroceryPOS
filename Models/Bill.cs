@@ -36,6 +36,9 @@ namespace GroceryPOS.Models
         /// <summary>ID of the user/cashier who processed the bill.</summary>
         public int? UserId { get; set; }
 
+        /// <summary>ID of the customer (nullable for walk-ins).</summary>
+        public int? CustomerId { get; set; }
+
         /// <summary>Formatted invoice number (e.g., 00001).</summary>
         public string InvoiceNumber => BillId.ToString("D5");
 
@@ -48,6 +51,9 @@ namespace GroceryPOS.Models
         /// <summary>Navigation — user/cashier who processed this bill.</summary>
         public User? User { get; set; }
 
+        /// <summary>Navigation — customer associated with this bill.</summary>
+        public Customer? Customer { get; set; }
+
         /// <summary>Current status of the bill (e.g., Completed, Cancelled, Replaced).</summary>
         public string Status { get; set; } = "Completed";
 
@@ -59,6 +65,17 @@ namespace GroceryPOS.Models
 
         /// <summary>FK to parent Bill for returns.</summary>
         public int? ParentBillId { get; set; }
+
+        // --- Print Tracking ---
+        /// <summary>Whether the receipt has been successfully printed.</summary>
+        public bool IsPrinted { get; set; }
+        /// <summary>When the receipt was successfully printed.</summary>
+        public DateTime? PrintedAt { get; set; }
+        /// <summary>Number of failed or successful print attempts.</summary>
+        public int PrintAttempts { get; set; }
+
+        /// <summary>Helper to check if this bill needs printing.</summary>
+        public bool IsPendingPrint => !IsPrinted && Status != "Cancelled";
 
         /// <summary>Helper to check if this is a return bill.</summary>
         public bool IsReturn => Type == "Return";

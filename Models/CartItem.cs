@@ -16,6 +16,9 @@ namespace GroceryPOS.Models
         /// <summary>Unit price at time of adding to cart.</summary>
         public double UnitPrice { get; set; }
 
+        /// <summary>Maximum available stock for this item.</summary>
+        public double AvailableStock { get; set; }
+
         private int _quantity = 1;
         /// <summary>Quantity in cart.</summary>
         public int Quantity

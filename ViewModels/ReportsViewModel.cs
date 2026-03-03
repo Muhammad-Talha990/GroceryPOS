@@ -15,9 +15,11 @@ namespace GroceryPOS.ViewModels
     public class ReportsViewModel : BaseViewModel
     {
         private readonly ReportService _reportService;
+        private readonly IStockService _stockService;
 
         public ObservableCollection<Bill> SalesReport { get; set; } = new();
         public ObservableCollection<ReportItem> ProductReport { get; set; } = new();
+        public ObservableCollection<Item> LowStockReport { get; set; } = new();
 
         private DateTime _fromDate = DateTime.Today;
         public DateTime FromDate
@@ -76,6 +78,9 @@ namespace GroceryPOS.ViewModels
         private bool _showProductGrid;
         public bool ShowProductGrid { get => _showProductGrid; set => SetProperty(ref _showProductGrid, value); }
 
+        private bool _showLowStockGrid;
+        public bool ShowLowStockGrid { get => _showLowStockGrid; set => SetProperty(ref _showLowStockGrid, value); }
+
         private bool _isToDateVisible;
         public bool IsToDateVisible { get => _isToDateVisible; set => SetProperty(ref _isToDateVisible, value); }
 
@@ -85,13 +90,26 @@ namespace GroceryPOS.ViewModels
         private string _fromDateLabel = "Target Date";
         public string FromDateLabel { get => _fromDateLabel; set => SetProperty(ref _fromDateLabel, value); }
 
+        private bool _isRevenueVisible = true;
+        public bool IsRevenueVisible { get => _isRevenueVisible; set => SetProperty(ref _isRevenueVisible, value); }
+
         public ICommand ExportReportCommand { get; }
 
-        public ReportsViewModel(ReportService reportService)
+        public ReportsViewModel(ReportService reportService, IStockService stockService)
         {
             _reportService = reportService;
+            _stockService = stockService;
             ExportReportCommand = new RelayCommand(ExportReport);
+            
+            _stockService.StockChanged += GenerateReport;
             GenerateReport();
+        }
+
+        public override void Dispose()
+        {
+            if (_stockService != null)
+                _stockService.StockChanged -= GenerateReport;
+            base.Dispose();
         }
 
         public void GenerateReport()
@@ -101,6 +119,7 @@ namespace GroceryPOS.ViewModels
                 DateTime start, end;
                 SalesReport.Clear();
                 ProductReport.Clear();
+                LowStockReport.Clear();
 
                 var type = SelectedReportType?.Trim();
 
@@ -110,12 +129,20 @@ namespace GroceryPOS.ViewModels
                     IsFromDateVisible = true;
                     IsToDateVisible = true;
                     FromDateLabel = "From Date";
+                    IsRevenueVisible = true;
                 }
                 else if (string.Equals(type, "Product-wise", StringComparison.OrdinalIgnoreCase))
                 {
                     IsFromDateVisible = true;
                     IsToDateVisible = true;
                     FromDateLabel = "Start Date";
+                    IsRevenueVisible = true;
+                }
+                else if (string.Equals(type, "Low Stock", StringComparison.OrdinalIgnoreCase))
+                {
+                    IsFromDateVisible = false;
+                    IsToDateVisible = false;
+                    IsRevenueVisible = false;
                 }
                 else
                 {
@@ -129,6 +156,8 @@ namespace GroceryPOS.ViewModels
                         FromDateLabel = "Selected Week";
                     else
                         FromDateLabel = "Report Date";
+
+                    IsRevenueVisible = true;
                 }
 
                 // 2. Determine Date Range based on FromDate (the anchor)
@@ -159,15 +188,27 @@ namespace GroceryPOS.ViewModels
                 {
                     ShowSalesGrid = false;
                     ShowProductGrid = true;
+                    ShowLowStockGrid = false;
                     var data = _reportService.GetProductWiseReport(start, end);
                     foreach (var r in data) ProductReport.Add(r);
                     TotalRevenue = data.Sum(r => r.TotalRevenue);
                     TotalSalesCount = data.Sum(r => r.QuantitySold);
                 }
+                else if (string.Equals(type, "Low Stock", StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowSalesGrid = false;
+                    ShowProductGrid = false;
+                    ShowLowStockGrid = true;
+                    var data = _stockService.GetLowStockItems();
+                    foreach (var i in data) LowStockReport.Add(i);
+                    TotalRevenue = 0; // Not applicable for low stock
+                    TotalSalesCount = data.Count;
+                }
                 else
                 {
                     ShowSalesGrid = true;
                     ShowProductGrid = false;
+                    ShowLowStockGrid = false;
                     var data = _reportService.GetByDateRange(start, end);
                     foreach (var s in data) SalesReport.Add(s);
                     TotalRevenue = data.Sum(s => s.GrandTotal);
@@ -202,6 +243,7 @@ namespace GroceryPOS.ViewModels
             {
                 if (ShowSalesGrid && SalesReport.Count == 0) return;
                 if (ShowProductGrid && ProductReport.Count == 0) return;
+                if (ShowLowStockGrid && LowStockReport.Count == 0) return;
 
                 var sfd = new Microsoft.Win32.SaveFileDialog
                 {
@@ -232,7 +274,7 @@ namespace GroceryPOS.ViewModels
                         }
                         csv.AppendLine($"TOTAL,,{totalSub},{totalDisc},{totalTax},{totalGrand},");
                     }
-                    else
+                    else if (ShowProductGrid)
                     {
                         csv.AppendLine("Product Name,Quantity Sold,Total Revenue");
                         foreach (var p in ProductReport)
@@ -249,6 +291,15 @@ namespace GroceryPOS.ViewModels
                             totalRev += p.TotalRevenue;
                         }
                         csv.AppendLine($"TOTAL,{totalQty},{totalRev}");
+                    }
+                    else if (ShowLowStockGrid)
+                    {
+                        csv.AppendLine("Barcode,Product Name,Category,Current Stock,Threshold");
+                        foreach (var i in LowStockReport)
+                        {
+                            csv.AppendLine($"{i.ItemId},\"{i.Description}\",\"{i.ItemCategory}\",{i.StockQuantity},{i.MinStockThreshold}");
+                        }
+                        csv.AppendLine($"TOTAL ITEMS,{LowStockReport.Count},,,,");
                     }
 
                     System.IO.File.WriteAllText(sfd.FileName, csv.ToString());

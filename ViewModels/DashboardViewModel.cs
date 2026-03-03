@@ -73,5 +73,11 @@ namespace GroceryPOS.ViewModels
                     LowStockItems.Add(item);
             });
         }
+        public override void Dispose()
+        {
+            if (_stockService != null)
+                _stockService.StockChanged -= LoadData;
+            base.Dispose();
+        }
     }
 }

@@ -9,6 +9,9 @@
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <converters:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
+        <converters:CountToVisibilityConverter x:Key="CountToVis"/>
+        <converters:CountToVisibilityConverter x:Key="InverseCountToVis" Inverse="True"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVis"/>
     </UserControl.Resources>
     <Grid Margin="30,24">
         <Grid.ColumnDefinitions>
@@ -105,6 +108,166 @@
                                FontSize="13" Foreground="{DynamicResource SubTextBrush}"/>
                 </StackPanel>
             </Grid>
+
+            <!-- Customer Section -->
+            <Border DockPanel.Dock="Top" Style="{DynamicResource CardBorder}" Padding="16" Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <TextBlock Text="👤 Customer Information" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"/>
+                        <Button Content="Add New" HorizontalAlignment="Right" Style="{StaticResource AccentButton}" 
+                                Padding="8,2" FontSize="11" Command="{Binding ToggleRegistrationCommand}"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Search Box -->
+                        <TextBox Tag="Search by phone..." Style="{DynamicResource ModernTextBox}"
+                                 Text="{Binding CustomerSearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                                 helpers:FocusHelper.IsFocused="{Binding IsCustomerSearchFocused, Mode=TwoWay}"
+                                 Visibility="{Binding HasSelectedCustomer, Converter={StaticResource InvBoolToVis}}">
+                           <TextBox.InputBindings>
+                               <KeyBinding Key="Return" Command="{Binding SelectCustomerCommand}"/>
+                               <KeyBinding Key="Escape" Command="{Binding ClearCustomerCommand}"/>
+                               <KeyBinding Key="Down" Command="{Binding NavigateSearchCommand}" CommandParameter="Down"/>
+                               <KeyBinding Key="Up" Command="{Binding NavigateSearchCommand}" CommandParameter="Up"/>
+                           </TextBox.InputBindings>
+                        </TextBox>
+
+                        <!-- Selected Customer Info -->
+                        <Border Background="{DynamicResource PrimaryBrush}" CornerRadius="8" Padding="15,10"
+                                Visibility="{Binding HasSelectedCustomer, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="👤" Foreground="White" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding SelectedCustomer.Name}" FontWeight="Bold" Foreground="White" FontSize="15" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding SelectedCustomer.PrimaryPhone, StringFormat=' ({0})'}" Foreground="#CCFFFFFF" FontSize="12" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    </StackPanel>
+                                    
+                                    <Button Content="✕" FontWeight="Bold" Foreground="White" Background="Transparent" BorderThickness="0"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Command="{Binding ClearCustomerCommand}" Cursor="Hand"/>
+                                </Grid>
+
+                                <Separator Background="#33FFFFFF" Margin="0,8"/>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <StackPanel>
+                                        <TextBlock Text="BILL HISTORY" Foreground="#BBFFFFFF" FontSize="9" FontWeight="Black" Margin="0,0,0,4"/>
+                                        <ComboBox ItemsSource="{Binding CustomerBills}"
+                                                  SelectedItem="{Binding SelectedHistoryBill}"
+                                                  Background="#1AFFFFFF" BorderThickness="0" Foreground="Black"
+                                                  HorizontalAlignment="Stretch"
+                                                  Visibility="{Binding CustomerBills.Count, Converter={StaticResource CountToVis}}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding InvoiceNumber}" FontWeight="Bold" Width="70"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding BillDateTime, StringFormat='{}{0:MMM dd, HH:mm}'}" Margin="10,0" Opacity="0.7"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding GrandTotal, StringFormat='{}Rs.{0:N0}'}" FontWeight="Black"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+
+                                        <!-- No Bills Message -->
+                                        <TextBlock Text="No past bills found for this customer." 
+                                                   Foreground="#99FFFFFF" FontSize="12" FontStyle="Italic"
+                                                   Margin="0,4,0,0"
+                                                   Visibility="{Binding CustomerBills.Count, Converter={StaticResource InverseCountToVis}}"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,15,0,0">
+                                        <Button Content="🔍 SEARCH ANOTHER" 
+                                                Style="{StaticResource PrimaryButton}" 
+                                                Padding="12,0" Height="32" Margin="0,0,8,0"
+                                                Background="#33FFFFFF" BorderThickness="1" BorderBrush="#66FFFFFF"
+                                                Command="{Binding ClearCustomerCommand}"
+                                                ToolTip="Clear selection and search for a different phone number"/>
+                                                
+                                        <Button Content="↺ REPEAT LAST" 
+                                                Style="{StaticResource AccentButton}" 
+                                                Padding="12,0" Height="32"
+                                                Command="{Binding RepeatOrderCommand}"
+                                                ToolTip="Quickly reload the most recent order"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Search Results Popup Sim-alike -->
+                    <ListBox ItemsSource="{Binding CustomerSearchResults}" 
+                              SelectedItem="{Binding SelectedSearchResult}"
+                              MaxHeight="150" Margin="0,4,0,0"
+                              Visibility="{Binding CustomerSearchResults.Count, Converter={StaticResource CountToVis}, FallbackValue=Collapsed}"
+                              Background="White" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border Name="Border" Padding="10,8" Background="Transparent" SnapsToDevicePixels="true">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="true">
+                                                    <Setter TargetName="Border" Property="Background" Value="#F1F5F9"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="true">
+                                                    <Setter TargetName="Border" Property="Background" Value="#F8FAFC"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Background="Transparent">
+                                    <Grid.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick" 
+                                                      Command="{Binding DataContext.SelectCustomerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      CommandParameter="{Binding}"/>
+                                    </Grid.InputBindings>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource TextBrush}"/>
+                                        <TextBlock Text="{Binding PrimaryPhone}" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="20,0,0,0">
+                                        <TextBlock Text="{Binding TotalAmount, StringFormat='Rs.{0:N0}'}" 
+                                                   FontWeight="Black" FontSize="14" Foreground="{DynamicResource SuccessBrush}" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="{Binding BillCount, StringFormat='{}{0} orders'}" 
+                                                   FontSize="11" Foreground="{DynamicResource SubTextBrush}" HorizontalAlignment="Right" Opacity="0.8"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
 
             <!-- Search & Barcode -->
             <Border DockPanel.Dock="Top" Style="{DynamicResource CardBorder}" Padding="16" Margin="0,0,0,16">
@@ -467,5 +630,40 @@
             </DockPanel>
         </Border>
         
+        <!-- Registration Overlay -->
+        <Grid Background="#44000000" Grid.ColumnSpan="3" Panel.ZIndex="1000"
+              Visibility="{Binding IsRegistrationVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+            <Border Width="400" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Style="{DynamicResource CardBorder}" Padding="24">
+                <StackPanel>
+                    <TextBlock Text="📝 Register New Customer" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
+                    
+                    <TextBlock Text="Full Name *" FontSize="12" Margin="0,0,0,6"/>
+                    <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding NewCustomerName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
+
+                    <TextBlock Text="Phone Number *" FontSize="12" Margin="0,0,0,6"/>
+                    <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding NewCustomerPhone, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" helpers:FocusHelper.NumericOnly="True"/>
+
+                    <TextBlock Text="Address (Optional)" FontSize="12" Margin="0,0,0,6"/>
+                    <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding NewCustomerAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
+
+                    <!-- Error Message Display -->
+                    <TextBlock Text="{Binding RegistrationErrorMessage}" Foreground="#EF4444" 
+                               FontSize="12" FontWeight="Bold" Margin="0,0,0,12"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding RegistrationErrorMessage, Converter={StaticResource StringToVis}}"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="Cancel" Style="{StaticResource DangerButton}" Command="{Binding ToggleRegistrationCommand}" Padding="0,12"/>
+                        <Button Grid.Column="2" Content="Save Customer" Style="{StaticResource PrimaryButton}" Command="{Binding SaveNewCustomerCommand}" Padding="0,12"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

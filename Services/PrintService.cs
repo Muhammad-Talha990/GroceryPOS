@@ -6,6 +6,8 @@ using System.IO;
 using System.Windows.Forms;
 using GroceryPOS.Helpers;
 using GroceryPOS.Models;
+using System.Management;
+using System.Linq;
 
 namespace GroceryPOS.Services
 {
@@ -61,12 +63,53 @@ namespace GroceryPOS.Services
             }
         }
 
-        public void PrintUnifiedReturnReceipt(Bill originalBill, Bill returnBill, string cashierName)
+        public bool IsPrinterOnline()
+        {
+            try
+            {
+                string printerName = _preferredPrinter ?? "";
+                if (string.IsNullOrEmpty(printerName))
+                {
+                    // Try to get default printer
+                    var settings = new PrinterSettings();
+                    printerName = settings.PrinterName;
+                }
+
+                if (string.IsNullOrEmpty(printerName)) return false;
+
+                string query = $"SELECT * FROM Win32_Printer WHERE Name = '{printerName.Replace("\\", "\\\\")}'";
+                using (var searcher = new ManagementObjectSearcher(query))
+                using (var results = searcher.Get())
+                {
+                    foreach (ManagementObject printer in results)
+                    {
+                        var status = printer["PrinterStatus"]?.ToString();
+                        var workOffline = printer["WorkOffline"]?.ToString()?.ToLower() == "true";
+                        var printerState = printer["PrinterState"]?.ToString();
+
+                        // PrinterStatus: 3=Idle/Ready, 4=Printing, 5=Warming Up
+                        // WorkOffline: must be false
+                        if (!workOffline && (status == "3" || status == "4" || status == "5"))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Printer status check failed", ex);
+            }
+            return false;
+        }
+
+        public bool PrintUnifiedReturnReceipt(Bill originalBill, Bill returnBill, List<Bill> history, string cashierName)
         {
             try
             {
                 _billToPrint = originalBill; // Base for original details
                 _currentReturnBill = returnBill;
+                _returnHistoryToPrint = history;
                 _cashierName = cashierName;
 
                 var printDoc = new PrintDocument();
@@ -82,7 +125,7 @@ namespace GroceryPOS.Services
                             targetPrinter = printDoc.PrinterSettings.PrinterName;
                             SaveConfig(targetPrinter);
                         }
-                        else return;
+                        else return false;
                     }
                 }
 
@@ -90,11 +133,12 @@ namespace GroceryPOS.Services
                 printDoc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", 302, 1500); 
                 printDoc.PrintPage += PrintUnifiedReturnPage_Handler;
                 printDoc.Print();
+                return true;
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Unified return receipt printing failed", ex);
-                throw;
+                return false;
             }
         }
 
@@ -138,7 +182,7 @@ namespace GroceryPOS.Services
         }
 
         /// <summary>Prints a receipt for the given Bill.</summary>
-        public void PrintReceipt(Bill bill, string cashierName, string? printerName = null)
+        public bool PrintReceipt(Bill bill, string cashierName, string? printerName = null)
         {
             try
             {
@@ -147,30 +191,23 @@ namespace GroceryPOS.Services
 
                 var printDoc = new PrintDocument();
 
-                string? targetPrinter = printerName;
+                string? targetPrinter = printerName ?? _preferredPrinter;
                 if (string.IsNullOrEmpty(targetPrinter))
                 {
-                    if (string.IsNullOrEmpty(_preferredPrinter))
+                    using (var dialog = new System.Windows.Forms.PrintDialog())
                     {
-                        using (var dialog = new System.Windows.Forms.PrintDialog())
-                        {
-                            dialog.Document = printDoc;
-                            dialog.UseEXDialog = true;
+                        dialog.Document = printDoc;
+                        dialog.UseEXDialog = true;
 
-                            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                            {
-                                targetPrinter = printDoc.PrinterSettings.PrinterName;
-                                SaveConfig(targetPrinter);
-                            }
-                            else
-                            {
-                                return; // Cancelled
-                            }
+                        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                        {
+                            targetPrinter = printDoc.PrinterSettings.PrinterName;
+                            SaveConfig(targetPrinter);
                         }
-                    }
-                    else
-                    {
-                        targetPrinter = _preferredPrinter;
+                        else
+                        {
+                            return false; // Cancelled
+                        }
                     }
                 }
 
@@ -185,12 +222,13 @@ namespace GroceryPOS.Services
                 printDoc.Print();
 
                 AppLogger.Info($"Receipt printed for Bill #{bill.BillId} on printer: {targetPrinter}");
+                return true;
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Receipt printing failed", ex);
                 _preferredPrinter = null;
-                throw;
+                return false;
             }
         }
 
@@ -503,6 +541,39 @@ namespace GroceryPOS.Services
             }
             g.DrawString($"Orig Total: Rs.{_billToPrint.GrandTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
             y += 20;
+
+            // 3.5 Previous Return History (New Section)
+            if (_returnHistoryToPrint != null && _returnHistoryToPrint.Any())
+            {
+                // Filter out the current return if it's already in history to avoid duplication
+                var previousReturns = _returnHistoryToPrint
+                    .Where(r => r.InvoiceNumber != _currentReturnBill.InvoiceNumber)
+                    .OrderBy(r => r.BillDateTime)
+                    .ToList();
+
+                if (previousReturns.Any())
+                {
+                    g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
+                    g.DrawString("PREVIOUS RETURN HISTORY", boldFont, Brushes.Black, margin, y); y += 14;
+
+                    int retIdx = 1;
+                    foreach (var prevRet in previousReturns)
+                    {
+                        g.DrawString($"Return #{retIdx} ({prevRet.BillDateTime:dd/MM HH:mm})", boldFont, Brushes.Black, margin, y);
+                        y += 13;
+
+                        foreach (var item in prevRet.Items)
+                        {
+                            string itemRow = $"  {item.ItemDescription} ({Math.Abs(item.Quantity)})";
+                            g.DrawString(itemRow, smallFont, Brushes.Black, margin + 5, y);
+                            y += 11;
+                        }
+                        y += 4;
+                        retIdx++;
+                    }
+                    y += 5;
+                }
+            }
 
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 

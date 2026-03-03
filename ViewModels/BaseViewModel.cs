@@ -5,7 +5,7 @@ using System.Windows;
 
 namespace GroceryPOS.ViewModels
 {
-    public class BaseViewModel : INotifyPropertyChanged
+    public class BaseViewModel : INotifyPropertyChanged, IDisposable
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -37,6 +37,10 @@ namespace GroceryPOS.ViewModels
             {
                 dispatcher.BeginInvoke(action);
             }
+        }
+        public virtual void Dispose()
+        {
+            // Optional: shared cleanup logic
         }
     }
 }

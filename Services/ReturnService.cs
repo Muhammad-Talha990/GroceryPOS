@@ -126,6 +126,7 @@ namespace GroceryPOS.Services
                         CashReceived = 0,
                         ChangeGiven = 0,
                         UserId = userId,
+                        CustomerId = originalBill.CustomerId,
                         Type = "Return",
                         ParentBillId = originalBillId,
                         Status = "Return processed"

@@ -6,6 +6,8 @@
 
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:CountToVisibilityConverter x:Key="CountToVis"/>
+        <converters:CountToVisibilityConverter x:Key="InverseCountToVis" Inverse="True"/>
     </UserControl.Resources>
 
     <Grid Margin="30,24">
@@ -46,6 +48,7 @@
                         <ComboBoxItem Content="Monthly"/>
                         <ComboBoxItem Content="Custom Range"/>
                         <ComboBoxItem Content="Product-wise"/>
+                        <ComboBoxItem Content="Low Stock"/>
                     </ComboBox>
                 </StackPanel>
 
@@ -66,7 +69,8 @@
                         Margin="0,0,16,0"/>
 
                 <!-- Summary -->
-                <StackPanel Grid.Column="5" HorizontalAlignment="Right" Margin="0,0,12,0">
+                <StackPanel Grid.Column="5" HorizontalAlignment="Right" Margin="0,0,12,0"
+                            Visibility="{Binding IsRevenueVisible, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="Total Revenue" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
                     <TextBlock FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}">
                         <TextBlock.Text>
@@ -93,6 +97,7 @@
                       CellStyle="{DynamicResource ModernDataGridCell}">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="150"/>
+                    <DataGridTextColumn Header="Customer" Binding="{Binding Customer.Name}" Width="150"/>
                     <DataGridTextColumn Header="Cashier" Binding="{Binding User.FullName}" Width="140"/>
                     <DataGridTextColumn Header="Sub Total" Binding="{Binding SubTotal, StringFormat='Rs.{0:N0}'}" Width="100"/>
                     <DataGridTextColumn Header="Discount" Binding="{Binding DiscountAmount, StringFormat='Rs.{0:N0}'}" Width="90"/>
@@ -118,5 +123,33 @@
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
+
+        <!-- Low Stock Report Grid -->
+        <Grid Grid.Row="2" Visibility="{Binding ShowLowStockGrid, Converter={StaticResource BoolToVis}}">
+            <Border Style="{DynamicResource CardBorder}" Padding="0">
+                <DataGrid ItemsSource="{Binding LowStockReport}"
+                          Style="{DynamicResource ModernDataGrid}"
+                          ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}"
+                          RowStyle="{DynamicResource ModernDataGridRow}"
+                          CellStyle="{DynamicResource ModernDataGridCell}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="150"/>
+                        <DataGridTextColumn Header="Product Name" Binding="{Binding Description}" Width="*"/>
+                        <DataGridTextColumn Header="Category" Binding="{Binding ItemCategory}" Width="150"/>
+                        <DataGridTextColumn Header="Current Stock" Binding="{Binding StockQuantity}" Width="120"/>
+                        <DataGridTextColumn Header="Min. Threshold" Binding="{Binding MinStockThreshold}" Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+            
+            <!-- Empty State Message -->
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Visibility="{Binding LowStockReport.Count, Converter={StaticResource InverseCountToVis}}">
+                <TextBlock Text="✅ All stock levels are healthy" FontSize="18" FontWeight="SemiBold" 
+                           Foreground="{DynamicResource SuccessBrush}" HorizontalAlignment="Center"/>
+                <TextBlock Text="No items are currently below their minimum threshold." FontSize="13" 
+                           Foreground="{DynamicResource SubTextBrush}" Margin="0,8,0,0" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

@@ -41,9 +41,21 @@ namespace GroceryPOS.ViewModels
             set => SetProperty(ref _statusMessage, value);
         }
 
+        private bool _isPreviewVisible;
+        public bool IsPreviewVisible
+        {
+            get => _isPreviewVisible;
+            set => SetProperty(ref _isPreviewVisible, value);
+        }
+
+        public string StoreName => "GROCERY MART";
+        public string StoreAddress => "123 Main Street, City Name";
+        public string StorePhone => "0300-1234567";
+
         public ICommand SearchCommand { get; }
         public ICommand ProcessReturnCommand { get; }
         public ICommand ClearFormCommand { get; }
+        public ICommand TogglePreviewCommand { get; }
 
         public ReturnViewModel(IReturnService returnService, AuthService authService, PrintService printService)
         {
@@ -54,6 +66,7 @@ namespace GroceryPOS.ViewModels
             SearchCommand = new RelayCommand(async _ => await SearchBill());
             ProcessReturnCommand = new RelayCommand(async _ => await ProcessReturn());
             ClearFormCommand = new RelayCommand(_ => ClearForm());
+            TogglePreviewCommand = new RelayCommand(_ => IsPreviewVisible = !IsPreviewVisible);
         }
 
         private async Task SearchBill()
@@ -144,7 +157,8 @@ namespace GroceryPOS.ViewModels
                 // ── Automated Unified Printing ──
                 try
                 {
-                    _printService.PrintUnifiedReturnReceipt(OriginalBill, returnBill, _authService.CurrentUser?.FullName ?? "Cashier");
+                    var historyData = await _returnService.GetBillWithReturnHistory(OriginalBill.BillId);
+                    _printService.PrintUnifiedReturnReceipt(OriginalBill, returnBill, historyData.Returns, _authService.CurrentUser?.FullName ?? "Cashier");
                 }
                 catch (Exception pex)
                 {

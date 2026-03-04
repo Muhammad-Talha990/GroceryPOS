@@ -36,6 +36,24 @@ namespace GroceryPOS.Models
             set => SetProperty(ref _customer, value);
         }
 
+        private string _customerSearchQuery = string.Empty;
+        public string CustomerSearchQuery
+        {
+            get => _customerSearchQuery;
+            set => SetProperty(ref _customerSearchQuery, value);
+        }
+
+        public ObservableCollection<Customer> CustomerSearchResults { get; set; } = new();
+        
+        private Customer? _selectedSearchResult;
+        public Customer? SelectedSearchResult 
+        { 
+            get => _selectedSearchResult; 
+            set => SetProperty(ref _selectedSearchResult, value); 
+        }
+
+        public ObservableCollection<Bill> CustomerBills { get; set; } = new();
+
         public ObservableCollection<CartItem> CartItems { get; set; } = new();
 
         private string _discountText = "0";

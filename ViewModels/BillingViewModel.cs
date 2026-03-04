@@ -48,12 +48,10 @@ namespace GroceryPOS.ViewModels
 
         public Customer? SelectedCustomer { get => SelectedTab?.Customer; set { if (SelectedTab != null) { SelectedTab.Customer = value; SelectedTab.CustomerId = value?.CustomerId; OnPropertyChanged(); OnPropertyChanged(nameof(HasSelectedCustomer)); } } }
         public bool HasSelectedCustomer => SelectedCustomer != null;
-
-        private string _customerSearchQuery = string.Empty;
-        public string CustomerSearchQuery { get => _customerSearchQuery; set { if (SetProperty(ref _customerSearchQuery, value)) SearchCustomers(); } }
-        public ObservableCollection<Customer> CustomerSearchResults { get; set; } = new();
-        public ObservableCollection<Bill> CustomerBills { get; set; } = new();
-        public Customer? SelectedSearchResult { get; set; }
+        public string CustomerSearchQuery { get => SelectedTab?.CustomerSearchQuery ?? string.Empty; set { if (SelectedTab != null && SelectedTab.CustomerSearchQuery != value) { SelectedTab.CustomerSearchQuery = value; SearchCustomers(); OnPropertyChanged(); } } }
+        public ObservableCollection<Customer> CustomerSearchResults => SelectedTab?.CustomerSearchResults ?? new();
+        public ObservableCollection<Bill> CustomerBills => SelectedTab?.CustomerBills ?? new();
+        public Customer? SelectedSearchResult { get => SelectedTab?.SelectedSearchResult; set { if (SelectedTab != null) { SelectedTab.SelectedSearchResult = value; OnPropertyChanged(); } } }
         private Bill? _selectedHistoryBill;
         public Bill? SelectedHistoryBill { get => _selectedHistoryBill; set { if (SetProperty(ref _selectedHistoryBill, value) && value != null) { LoadBillIntoCart(value); _selectedHistoryBill = null; OnPropertyChanged(); } } }
 
@@ -61,6 +59,7 @@ namespace GroceryPOS.ViewModels
         public bool IsRegistrationVisible { get; set; }
         public string NewCustomerName { get; set; } = "";
         public string NewCustomerPhone { get; set; } = "";
+        public string NewCustomerSecondaryPhone { get; set; } = "";
         public string NewCustomerAddress { get; set; } = "";
         public string RegistrationErrorMessage { get; set; } = "";
 
@@ -123,7 +122,7 @@ namespace GroceryPOS.ViewModels
             SelectCustomerCommand = new RelayCommand(obj => SelectCustomer(obj as Customer));
             ClearCustomerCommand = new RelayCommand(_ => ClearCustomer());
             RepeatOrderCommand = new RelayCommand(_ => RepeatLastOrder(), _ => HasSelectedCustomer);
-            ToggleRegistrationCommand = new RelayCommand(() => { IsRegistrationVisible = !IsRegistrationVisible; OnPropertyChanged(nameof(IsRegistrationVisible)); });
+            ToggleRegistrationCommand = new RelayCommand(() => { IsRegistrationVisible = !IsRegistrationVisible; ClearRegistrationForm(); OnPropertyChanged(nameof(IsRegistrationVisible)); });
             SaveNewCustomerCommand = new RelayCommand(_ => SaveNewCustomer());
             NavigateSearchCommand = new RelayCommand(p => NavigateSearchResults(p?.ToString()));
             LoadProducts();
@@ -144,20 +143,67 @@ namespace GroceryPOS.ViewModels
         private async Task AttemptPrint(Bill b) { b.PrintAttempts++; if (!_printService.IsPrinterOnline()) { if (MessageBox.Show("Printer offline. Retry?", "Printer Error", MessageBoxButton.YesNo) == MessageBoxResult.Yes) await AttemptPrint(b); else _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); return; } if (_printService.PrintReceipt(b, _authService.CurrentUser?.FullName ?? "Cashier")) _billRepo.UpdatePrintStatus(b.BillId, true, DateTime.Now, b.PrintAttempts); else _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); }
         private void ClearCart() { if (SelectedTab == null) return; SelectedTab.CartItems.Clear(); SelectedTab.DiscountText = "0"; SelectedTab.TaxText = "0"; SelectedTab.CashReceivedText = "0"; ClearCustomer(); RecalculateTotal(); InvoiceNumber = _billService.GetNextInvoiceNumber(); }
         private void PrintLastReceipt() { if (_lastBill != null) _ = AttemptPrint(_lastBill); }
-        private void SearchCustomers() { if (string.IsNullOrWhiteSpace(CustomerSearchQuery) || CustomerSearchQuery.Length < 3) { CustomerSearchResults.Clear(); return; } CustomerSearchResults = new ObservableCollection<Customer>(_customerService.SearchCustomers(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); }
-        private void SelectCustomer(Customer? c) { if (c == null) return; SelectedCustomer = c; CustomerSearchQuery = ""; CustomerSearchResults.Clear(); LoadCustomerHistory(c.CustomerId); }
-        private void ClearCustomer() { SelectedCustomer = null; CustomerBills.Clear(); }
-        private void LoadCustomerHistory(int id) { CustomerBills = new ObservableCollection<Bill>(_billRepo.GetBillsByCustomerId(id)); OnPropertyChanged(nameof(CustomerBills)); }
+        private void SearchCustomers() { if (SelectedTab == null) return; SelectedSearchResult = null; if (string.IsNullOrWhiteSpace(CustomerSearchQuery) || CustomerSearchQuery.Length < 3) { SelectedTab.CustomerSearchResults.Clear(); OnPropertyChanged(nameof(CustomerSearchResults)); return; } var results = _customerService.SearchCustomers(CustomerSearchQuery); SelectedTab.CustomerSearchResults.Clear(); foreach (var c in results) SelectedTab.CustomerSearchResults.Add(c); OnPropertyChanged(nameof(CustomerSearchResults)); }
+        private void SelectCustomer(Customer? c)
+        {
+            var targetCustomer = c ?? SelectedSearchResult;
+            if (targetCustomer == null || SelectedTab == null) return;
+            
+            SelectedCustomer = targetCustomer;
+            SelectedTab.CustomerSearchQuery = "";
+            SelectedTab.CustomerSearchResults.Clear();
+            SelectedSearchResult = null;
+            OnPropertyChanged(nameof(CustomerSearchQuery));
+            OnPropertyChanged(nameof(CustomerSearchResults));
+            LoadCustomerHistory(targetCustomer.CustomerId);
+        }
+        private void ClearCustomer() { if (SelectedTab == null) return; SelectedCustomer = null; SelectedTab.CustomerBills.Clear(); SelectedTab.CustomerSearchQuery = ""; SelectedTab.CustomerSearchResults.Clear(); OnPropertyChanged(nameof(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); }
+        private void LoadCustomerHistory(int id) { if (SelectedTab == null) return; var bills = _billRepo.GetBillsByCustomerId(id); SelectedTab.CustomerBills.Clear(); foreach (var b in bills) SelectedTab.CustomerBills.Add(b); OnPropertyChanged(nameof(CustomerBills)); }
         private void RepeatLastOrder() { var lb = CustomerBills.FirstOrDefault(); if (lb != null) LoadBillIntoCart(lb); }
         private void LoadBillIntoCart(Bill b) { if (SelectedTab == null) return; SelectedTab.CartItems.Clear(); foreach (var it in b.Items) SelectedTab.CartItems.Add(new CartItem { ItemId = it.ItemId, ItemDescription = it.ItemDescription, UnitPrice = it.UnitPrice, Quantity = it.Quantity }); RecalculateTotal(); }
         private void SaveNewCustomer() { try { if (string.IsNullOrWhiteSpace(NewCustomerName) || string.IsNullOrWhiteSpace(NewCustomerPhone)) { RegistrationErrorMessage = "Name and Phone are required."; OnPropertyChanged(nameof(RegistrationErrorMessage)); return; } 
-            var customer = new Customer { Name = NewCustomerName, PrimaryPhone = NewCustomerPhone, Address = NewCustomerAddress };
+            var customer = new Customer { Name = NewCustomerName, PrimaryPhone = NewCustomerPhone, SecondaryPhone = NewCustomerSecondaryPhone, Address = NewCustomerAddress };
             _customerService.RegisterCustomer(customer);
             SelectCustomer(customer); 
-            IsRegistrationVisible = false; OnPropertyChanged(nameof(IsRegistrationVisible)); NewCustomerName = NewCustomerPhone = NewCustomerAddress = ""; RegistrationErrorMessage = ""; }
+            SelectCustomer(customer);
+            IsRegistrationVisible = false; OnPropertyChanged(nameof(IsRegistrationVisible)); ClearRegistrationForm(); }
             catch (Exception ex) { RegistrationErrorMessage = ex.Message; OnPropertyChanged(nameof(RegistrationErrorMessage)); } }
-        private void NavigateSearchResults(string? d) { }
-        private void NotifyTabPropertiesChanged() { OnPropertyChanged(nameof(CartItems)); OnPropertyChanged(nameof(DiscountText)); OnPropertyChanged(nameof(TaxText)); OnPropertyChanged(nameof(CashReceivedText)); OnPropertyChanged(nameof(InvoiceNumber)); OnPropertyChanged(nameof(SelectedCustomer)); }
+        private void ClearRegistrationForm()
+        {
+            NewCustomerName = "";
+            NewCustomerPhone = "";
+            NewCustomerSecondaryPhone = "";
+            NewCustomerAddress = "";
+            RegistrationErrorMessage = "";
+            OnPropertyChanged(nameof(NewCustomerName));
+            OnPropertyChanged(nameof(NewCustomerPhone));
+            OnPropertyChanged(nameof(NewCustomerSecondaryPhone));
+            OnPropertyChanged(nameof(NewCustomerAddress));
+            OnPropertyChanged(nameof(RegistrationErrorMessage));
+        }
+
+        private void NavigateSearchResults(string? direction)
+        {
+            if (CustomerSearchResults == null || CustomerSearchResults.Count == 0) return;
+
+            int currentIndex = SelectedSearchResult != null ? CustomerSearchResults.IndexOf(SelectedSearchResult) : -1;
+            int nextIndex = currentIndex;
+
+            if (direction == "Down")
+            {
+                nextIndex = (currentIndex + 1) % CustomerSearchResults.Count;
+            }
+            else if (direction == "Up")
+            {
+                nextIndex = currentIndex <= 0 ? CustomerSearchResults.Count - 1 : currentIndex - 1;
+            }
+
+            if (nextIndex >= 0 && nextIndex < CustomerSearchResults.Count)
+            {
+                SelectedSearchResult = CustomerSearchResults[nextIndex];
+            }
+        }
+        private void NotifyTabPropertiesChanged() { OnPropertyChanged(nameof(CartItems)); OnPropertyChanged(nameof(DiscountText)); OnPropertyChanged(nameof(TaxText)); OnPropertyChanged(nameof(CashReceivedText)); OnPropertyChanged(nameof(InvoiceNumber)); OnPropertyChanged(nameof(SelectedCustomer)); OnPropertyChanged(nameof(HasSelectedCustomer)); OnPropertyChanged(nameof(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); OnPropertyChanged(nameof(SelectedSearchResult)); OnPropertyChanged(nameof(CustomerBills)); }
         public override void Dispose() { _timer.Stop(); base.Dispose(); }
     }
 }

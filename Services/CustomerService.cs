@@ -26,17 +26,30 @@ namespace GroceryPOS.Services
 
             string rawPhone = customer.PrimaryPhone.Trim();
             string normalized = NormalizePhone(rawPhone);
-
-            // Constraint: Must start with 0 and be 11 digits
             if (!rawPhone.StartsWith("0") || normalized.Length != 11)
-            {
-                throw new ArgumentException("Invalid phone format. Phone number must start with '0' and be exactly 11 digits.");
-            }
+                throw new ArgumentException("Invalid primary phone format. Must start with '0' and be 11 digits.");
 
             if (_customerRepo.GetByPhone(normalized) != null)
-                throw new InvalidOperationException("A customer with this phone number already exists.");
+                throw new InvalidOperationException("A customer with this primary phone number already exists.");
 
             customer.PrimaryPhone = normalized;
+
+            if (!string.IsNullOrWhiteSpace(customer.SecondaryPhone))
+            {
+                string rawPhone2 = customer.SecondaryPhone.Trim();
+                string normalized2 = NormalizePhone(rawPhone2);
+                if (!rawPhone2.StartsWith("0") || normalized2.Length != 11)
+                    throw new ArgumentException("Invalid secondary phone format. Must start with '0' and be 11 digits.");
+                
+                if (normalized == normalized2)
+                    throw new ArgumentException("Primary and secondary phone numbers cannot be the same.");
+
+                if (_customerRepo.GetByPhone(normalized2) != null)
+                    throw new InvalidOperationException("A customer with this secondary phone number already exists.");
+                
+                customer.SecondaryPhone = normalized2;
+            }
+
             _customerRepo.Save(customer);
         }
 

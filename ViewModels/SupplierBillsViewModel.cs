@@ -203,7 +203,7 @@ namespace GroceryPOS.ViewModels
             SelectMainProductCommand = new RelayCommand((p) => ExecuteSelectMainProduct(p as Item));
             RefreshCommand = new RelayCommand(async () => await LoadAllRecentSupplies());
             ViewFullBillCommand = new RelayCommand(ExecuteViewFullBill, () => SelectedEntry != null && !string.IsNullOrEmpty(SelectedEntry.ImagePath));
-            ToggleSearchResultsCommand = new RelayCommand(() => ExecuteToggleSearchResults());
+            ToggleSearchResultsCommand = new RelayCommand(async () => await ExecuteToggleSearchResults());
 
             // Subscribe to real-time stock changes
             _stockService.StockChanged += OnStockChanged;

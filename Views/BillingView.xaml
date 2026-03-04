@@ -644,6 +644,9 @@
                     <TextBlock Text="Phone Number *" FontSize="12" Margin="0,0,0,6"/>
                     <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding NewCustomerPhone, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" helpers:FocusHelper.NumericOnly="True"/>
 
+                    <TextBlock Text="Phone Number 2 (Optional)" FontSize="12" Margin="0,0,0,6"/>
+                    <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding NewCustomerSecondaryPhone, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" helpers:FocusHelper.NumericOnly="True"/>
+
                     <TextBlock Text="Address (Optional)" FontSize="12" Margin="0,0,0,6"/>
                     <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding NewCustomerAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"/>
 

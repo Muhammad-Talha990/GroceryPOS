@@ -111,6 +111,7 @@ namespace GroceryPOS.Data
                             CustomerId      INTEGER PRIMARY KEY AUTOINCREMENT,
                             Name            TEXT    NOT NULL,
                             PrimaryPhone    TEXT    NOT NULL UNIQUE,
+                            SecondaryPhone  TEXT,
                             Address         TEXT,
                             CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
                         );
@@ -155,6 +156,7 @@ namespace GroceryPOS.Data
 
                     // ── Migration: Customer Management (Add column before index) ──
                     AddColumnIfNotExists(conn, "Bill", "CustomerId", "INTEGER");
+                    AddColumnIfNotExists(conn, "Customers", "SecondaryPhone", "TEXT");
 
                     // ══════════════════════════════════════════
                     //  INDEXES for query optimization

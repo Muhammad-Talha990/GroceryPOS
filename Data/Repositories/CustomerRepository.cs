@@ -13,12 +13,13 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Customers (Name, PrimaryPhone, Address, CreatedAt)
-                VALUES (@name, @phone, @address, @created);
+                INSERT INTO Customers (Name, PrimaryPhone, SecondaryPhone, Address, CreatedAt)
+                VALUES (@name, @phone, @phone2, @address, @created);
                 SELECT last_insert_rowid();";
             
             cmd.Parameters.AddWithValue("@name", customer.Name);
             cmd.Parameters.AddWithValue("@phone", NormalizePhone(customer.PrimaryPhone));
+            cmd.Parameters.AddWithValue("@phone2", string.IsNullOrEmpty(customer.SecondaryPhone) ? (object)DBNull.Value : NormalizePhone(customer.SecondaryPhone));
             cmd.Parameters.AddWithValue("@address", customer.Address ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@created", customer.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
 
@@ -30,7 +31,7 @@ namespace GroceryPOS.Data.Repositories
             string normalized = NormalizePhone(phone);
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Customers WHERE PrimaryPhone = @phone";
+            cmd.CommandText = "SELECT * FROM Customers WHERE PrimaryPhone = @phone OR SecondaryPhone = @phone";
             cmd.Parameters.AddWithValue("@phone", normalized);
 
             using var reader = cmd.ExecuteReader();
@@ -56,7 +57,7 @@ namespace GroceryPOS.Data.Repositories
 
             if (!string.IsNullOrEmpty(normalized))
             {
-                cmd.CommandText += " OR (c.PrimaryPhone LIKE @phoneQuery OR c.PrimaryPhone = @exactPhone)";
+                cmd.CommandText += " OR (c.PrimaryPhone LIKE @phoneQuery OR c.PrimaryPhone = @exactPhone OR c.SecondaryPhone LIKE @phoneQuery OR c.SecondaryPhone = @exactPhone)";
                 cmd.Parameters.AddWithValue("@phoneQuery", "%" + normalized);
                 cmd.Parameters.AddWithValue("@exactPhone", normalized);
             }
@@ -103,6 +104,7 @@ namespace GroceryPOS.Data.Repositories
                 CustomerId = reader.GetInt32(reader.GetOrdinal("CustomerId")),
                 Name = reader.GetString(reader.GetOrdinal("Name")),
                 PrimaryPhone = reader.GetString(reader.GetOrdinal("PrimaryPhone")),
+                SecondaryPhone = reader.IsDBNull(reader.GetOrdinal("SecondaryPhone")) ? null : reader.GetString(reader.GetOrdinal("SecondaryPhone")),
                 Address = reader.IsDBNull(reader.GetOrdinal("Address")) ? null : reader.GetString(reader.GetOrdinal("Address")),
                 CreatedAt = DateTime.TryParse(reader.GetString(reader.GetOrdinal("CreatedAt")), out var dt) ? dt : DateTime.Now,
                 BillCount = reader.HasColumn("BillCount") ? reader.GetInt32(reader.GetOrdinal("BillCount")) : 0,

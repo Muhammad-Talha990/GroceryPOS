@@ -115,6 +115,9 @@ namespace GroceryPOS.Data
                             Address         TEXT,
                             CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
                         );
+
+                        CREATE INDEX IF NOT EXISTS IX_Customers_Name ON Customers(Name);
+                        CREATE INDEX IF NOT EXISTS IX_Customers_SecondaryPhone ON Customers(SecondaryPhone);
                     ");
 
                     // ══════════════════════════════════════════

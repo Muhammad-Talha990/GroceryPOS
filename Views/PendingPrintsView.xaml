@@ -21,7 +21,7 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,20">
             <TextBlock Text="🖨️ Pending Prints" FontSize="24" FontWeight="Bold"
                        Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
-            <TextBlock Text="Manage bills that failed to print or are waiting for a printer" FontSize="13"
+            <TextBlock Text="Bills that could not be printed or are waiting for a printer" FontSize="13"
                        Foreground="{DynamicResource SubTextBrush}"/>
         </StackPanel>
 
@@ -29,18 +29,19 @@
         <Border Grid.Row="1" Style="{DynamicResource CardBorder}" Margin="0,0,0,16" Padding="12">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                    <Button Content="🔄 Refresh" Style="{DynamicResource SecondaryButton}" 
+                    <Button Content="🔄 Refresh" Style="{DynamicResource SecondaryButton}"
                             Command="{Binding RefreshCommand}" Margin="0,0,8,0"/>
-                    <Button Content="🖨️ Print Selected" Style="{DynamicResource PrimaryButton}" 
+                    <Button Content="🖨️ Print Selected" Style="{DynamicResource PrimaryButton}"
                             Command="{Binding PrintSelectedCommand}" Margin="0,0,8,0"/>
-                    <Button Content="✅ Mark as Printed" Style="{DynamicResource SecondaryButton}" 
+                    <Button Content="✅ Mark as Printed" Style="{DynamicResource SecondaryButton}"
                             Command="{Binding MarkAsPrintedCommand}" Margin="0,0,8,0"/>
-                    <Button Content="❌ Cancel Print" Style="{DynamicResource SidebarButton}" 
+                    <Button Content="❌ Cancel Print" Style="{DynamicResource SidebarButton}"
                             Command="{Binding CancelPrintCommand}" Foreground="#F87171" Background="Transparent"/>
                 </StackPanel>
-                
+
                 <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" HorizontalAlignment="Right"
-                           Foreground="{DynamicResource SubTextBrush}" FontSize="13" Margin="0,0,8,0"/>
+                           Foreground="{DynamicResource SubTextBrush}" FontSize="13" Margin="0,0,8,0"
+                           DockPanel.Dock="Right" TextWrapping="Wrap"/>
             </DockPanel>
         </Border>
 
@@ -54,11 +55,13 @@
                           RowStyle="{DynamicResource ModernDataGridRow}"
                           CellStyle="{DynamicResource ModernDataGridCell}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="120"/>
-                        <DataGridTextColumn Header="Date" Binding="{Binding BillDateTime, StringFormat='dd/MM/yyyy HH:mm'}" Width="150"/>
-                        <DataGridTextColumn Header="Customer" Binding="{Binding Customer.Name}" Width="150"/>
+                        <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="90"/>
+                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="70"/>
+                        <DataGridTextColumn Header="Date" Binding="{Binding BillDateTime, StringFormat='dd/MM/yyyy HH:mm'}" Width="140"/>
+                        <DataGridTextColumn Header="Customer" Binding="{Binding Customer.Name}" Width="130"/>
+                        <DataGridTextColumn Header="Cashier" Binding="{Binding User.FullName}" Width="130"/>
                         <DataGridTextColumn Header="Total" Binding="{Binding GrandTotal, StringFormat='Rs.{0:N2}'}" Width="100"/>
-                        <DataGridTextColumn Header="Attempts" Binding="{Binding PrintAttempts}" Width="80"/>
+                        <DataGridTextColumn Header="Attempts" Binding="{Binding PrintAttempts}" Width="75"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
@@ -68,23 +71,27 @@
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
                         Visibility="{Binding PendingBills.Count, Converter={StaticResource InverseCountToVis}}">
                 <TextBlock Text="🖨️" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16" Opacity="0.5"/>
-                <TextBlock Text="No pending prints" FontSize="18" FontWeight="SemiBold" 
+                <TextBlock Text="No pending prints" FontSize="18" FontWeight="SemiBold"
                            Foreground="{DynamicResource SubTextBrush}" HorizontalAlignment="Center"/>
-                <TextBlock Text="All bills have been successfully printed or cancelled." FontSize="13" 
-                           Foreground="{DynamicResource SubTextBrush}" Margin="0,8,0,0" HorizontalAlignment="Center"/>
+                <TextBlock Text="All bills have been successfully printed or cancelled."
+                           FontSize="13" Foreground="{DynamicResource SubTextBrush}"
+                           Margin="0,8,0,0" HorizontalAlignment="Center"/>
             </StackPanel>
-            
+
             <!-- Loading Overlay -->
             <Border Background="#80000000" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="18"/>
+                <TextBlock Text="Loading..." Foreground="White" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" FontSize="18"/>
             </Border>
         </Grid>
-        
-        <!-- Footer Info -->
-        <Border Grid.Row="3" Margin="0,16,0,0" Padding="12" Background="#FFF1F2" CornerRadius="8" BorderBrush="#FECACA" BorderThickness="1">
+
+        <!-- Footer Tip -->
+        <Border Grid.Row="3" Margin="0,16,0,0" Padding="12,10" CornerRadius="8"
+                Background="#FFF1F2" BorderBrush="#FECACA" BorderThickness="1">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="💡 Tip:" FontWeight="Bold" Foreground="#B91C1C" Margin="0,0,8,0"/>
-                <TextBlock Text="If a printer was disconnected, reconnect it and ensure it is 'Online' in Windows before clicking 'Print Selected'." Foreground="#B91C1C"/>
+                <TextBlock Text="💡 Tip: " FontWeight="Bold" Foreground="#B91C1C" Margin="0,0,6,0"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#B91C1C"
+                           Text="If a printer was disconnected, reconnect it and ensure it is 'Online' in Windows before clicking 'Print Selected'. Use 'Mark as Printed' if the bill was printed manually."/>
             </StackPanel>
         </Border>
     </Grid>

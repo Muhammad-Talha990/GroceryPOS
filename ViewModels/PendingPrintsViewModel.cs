@@ -14,7 +14,7 @@ namespace GroceryPOS.ViewModels
         private readonly BillRepository _billRepo;
         private readonly PrintService _printService;
         private readonly AuthService _authService;
-        
+
         private ObservableCollection<Bill> _pendingBills = new();
         private Bill? _selectedBill;
         private string _statusMessage = "";
@@ -29,7 +29,16 @@ namespace GroceryPOS.ViewModels
         public Bill? SelectedBill
         {
             get => _selectedBill;
-            set => SetProperty(ref _selectedBill, value);
+            set
+            {
+                if (SetProperty(ref _selectedBill, value))
+                {
+                    // Refresh command CanExecute state whenever selection changes
+                    (PrintSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (MarkAsPrintedCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (CancelPrintCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            }
         }
 
         public string StatusMessage
@@ -70,7 +79,11 @@ namespace GroceryPOS.ViewModels
             {
                 var bills = _billRepo.GetPendingPrintBills();
                 PendingBills = new ObservableCollection<Bill>(bills);
-                StatusMessage = bills.Any() ? $"{bills.Count} pending prints found." : "No pending prints.";
+
+                int count = bills.Count;
+                StatusMessage = count > 0
+                    ? $"{count} bill{(count == 1 ? "" : "s")} pending print."
+                    : "All bills have been printed.";
             }
             catch (Exception ex)
             {
@@ -89,12 +102,14 @@ namespace GroceryPOS.ViewModels
 
             SelectedBill.PrintAttempts++;
             bool isOnline = _printService.IsPrinterOnline();
-            
+
             if (!isOnline)
             {
-                MessageBox.Show("Printer is still offline. Please check connection and try again.", 
-                    "Printer Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(
+                    "Printer is offline or not detected. Please check the connection and try again.",
+                    "Printer Offline", MessageBoxButton.OK, MessageBoxImage.Warning);
                 _billRepo.UpdatePrintStatus(SelectedBill.BillId, false, null, SelectedBill.PrintAttempts);
+                StatusMessage = $"✗ Printer offline — Bill #{SelectedBill.InvoiceNumber} not printed.";
                 return;
             }
 
@@ -105,11 +120,14 @@ namespace GroceryPOS.ViewModels
                 _billRepo.UpdatePrintStatus(SelectedBill.BillId, true, now, SelectedBill.PrintAttempts);
                 StatusMessage = $"✓ Receipt printed for Bill #{SelectedBill.InvoiceNumber}";
                 PendingBills.Remove(SelectedBill);
+                SelectedBill = null;
             }
             else
             {
                 _billRepo.UpdatePrintStatus(SelectedBill.BillId, false, null, SelectedBill.PrintAttempts);
-                MessageBox.Show("Printing failed again. Check printer or spooler settings.", 
+                StatusMessage = $"✗ Print failed for Bill #{SelectedBill.InvoiceNumber}. Check printer settings.";
+                MessageBox.Show(
+                    "Printing failed. Check that the printer is online and the spooler is running.",
                     "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -118,12 +136,16 @@ namespace GroceryPOS.ViewModels
         {
             if (SelectedBill == null) return;
 
-            var result = MessageBox.Show("Mark this bill as printed manually?", "Confirm", MessageBoxButton.YesNo);
+            var result = MessageBox.Show(
+                $"Mark Bill #{SelectedBill.InvoiceNumber} as printed manually?\n\nUse this if the bill was printed via another method.",
+                "Confirm Mark as Printed", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
             if (result == MessageBoxResult.Yes)
             {
                 _billRepo.UpdatePrintStatus(SelectedBill.BillId, true, DateTime.Now, SelectedBill.PrintAttempts);
+                StatusMessage = $"✓ Bill #{SelectedBill.InvoiceNumber} marked as printed.";
                 PendingBills.Remove(SelectedBill);
-                StatusMessage = "Bill marked as printed.";
+                SelectedBill = null;
             }
         }
 
@@ -131,17 +153,18 @@ namespace GroceryPOS.ViewModels
         {
             if (SelectedBill == null) return;
 
-            var result = MessageBox.Show("Are you sure you want to cancel printing for this bill? (It will be removed from this list but not deleted from database)", 
-                "Confirm Cancel", MessageBoxButton.YesNo);
-            
+            var result = MessageBox.Show(
+                $"Cancel print job for Bill #{SelectedBill.InvoiceNumber}?\n\nThe bill record will remain in the database but be removed from this list.",
+                "Confirm Cancel Print", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
             if (result == MessageBoxResult.Yes)
             {
-                // We mark it as 'Printed' in DB just to hide it from this list, 
-                // but without a timestamp strictly speaking it might be ambiguous.
-                // However the requirement is "Allow cancel print".
+                // Mark as "printed" with no timestamp to hide it from the pending list
+                // without deleting the underlying bill record.
                 _billRepo.UpdatePrintStatus(SelectedBill.BillId, true, null, SelectedBill.PrintAttempts);
+                StatusMessage = $"Print cancelled for Bill #{SelectedBill.InvoiceNumber}.";
                 PendingBills.Remove(SelectedBill);
-                StatusMessage = "Print cancelled.";
+                SelectedBill = null;
             }
         }
     }

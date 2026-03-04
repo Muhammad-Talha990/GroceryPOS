@@ -42,7 +42,7 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="150"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
@@ -54,10 +54,11 @@
                 </TextBox>
                 <Button Grid.Column="2" Content="🔍 Search Bill" Style="{DynamicResource PrimaryButton}" Command="{Binding SearchCommand}" Margin="12,0,0,0" Padding="20,0"/>
                 
-                <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Grid Grid.Column="3" Margin="15,0,0,0">
                     <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" 
-                               Foreground="{Binding StatusMessage, Converter={StaticResource StatusColorConverter}}" FontWeight="Medium"/>
-                </StackPanel>
+                               Foreground="{Binding StatusMessage, Converter={StaticResource StatusColorConverter}}" 
+                               FontWeight="Medium" TextWrapping="Wrap"/>
+                </Grid>
             </Grid>
         </Border>
 
@@ -77,29 +78,38 @@
                         </Style>
                     </DataGrid.RowStyle>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Product Description" Binding="{Binding Description}" Width="*" IsReadOnly="True"/>
-                        <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="150" IsReadOnly="True"/>
-                        <DataGridTextColumn Header="Sold Qty" Binding="{Binding OriginalQuantity}" Width="100" IsReadOnly="True">
+                        <DataGridTemplateColumn Header="Product Description" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Padding="4,2" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="120" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Sold" Binding="{Binding OriginalQuantity}" Width="65" IsReadOnly="True">
                              <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="Returned" Binding="{Binding AlreadyReturned}" Width="100" IsReadOnly="True">
+                        <DataGridTextColumn Header="Ret" Binding="{Binding AlreadyReturned}" Width="60" IsReadOnly="True">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
                                     <Setter Property="FontWeight" Value="SemiBold"/>
                                     <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="Remaining" Binding="{Binding RemainingQuantity}" Width="110" IsReadOnly="True">
+                        <DataGridTextColumn Header="Rem" Binding="{Binding RemainingQuantity}" Width="60" IsReadOnly="True">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="FontWeight" Value="SemiBold"/>
                                     <Setter Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding RemainingQuantity}" Value="0">
                                             <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
@@ -108,7 +118,7 @@
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
-                        <DataGridTemplateColumn Header="Return Qty" Width="120">
+                        <DataGridTemplateColumn Header="Return Qty" Width="100">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBox Text="{Binding ReturnQuantity, UpdateSourceTrigger=PropertyChanged}" 
@@ -140,7 +150,7 @@
                       Style="{DynamicResource ModernDataGrid}" MaxHeight="150"
                       ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}" RowStyle="{DynamicResource ModernDataGridRow}" CellStyle="{DynamicResource ModernDataGridCell}">
                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="Return ID" Binding="{Binding ReturnBillId}" Width="150">
+                    <DataGridTextColumn Header="Return ID" Binding="{Binding ReturnBillId}" Width="120">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="FontWeight" Value="Bold"/>
@@ -148,9 +158,9 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Date/Time" Binding="{Binding ReturnDate}" Width="160"/>
-                    <DataGridTextColumn Header="Item" Binding="{Binding ProductId}" Width="150"/>
-                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="75">
+                    <DataGridTextColumn Header="Date/Time" Binding="{Binding ReturnDate}" Width="150"/>
+                    <DataGridTextColumn Header="Barcode" Binding="{Binding ProductId}" Width="120"/>
+                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="60">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -158,7 +168,13 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Product Description" Binding="{Binding ProductDescription}" Width="*"/>
+                    <DataGridTemplateColumn Header="Product Description" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding ProductDescription}" TextWrapping="Wrap" Padding="4,2"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
@@ -166,11 +182,11 @@
         <!-- Footer Actions (Row 5) -->
         <Border Grid.Row="5" Margin="0,20,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="✖ Clear" Style="{DynamicResource SecondaryButton}" Width="110" Margin="0,0,12,0" Command="{Binding ClearFormCommand}"/>
-                <Button Content="View Preview" Style="{DynamicResource AccentButton}" Width="150" Margin="0,0,12,0" 
+                <Button Content="✖ Clear" Style="{DynamicResource SecondaryButton}" Width="110" Margin="0,0,15,0" Command="{Binding ClearFormCommand}"/>
+                <Button Content="View Preview" Style="{DynamicResource AccentButton}" Width="150" Margin="0,0,15,0" 
                         Command="{Binding TogglePreviewCommand}"
                         Visibility="{Binding OriginalBill, Converter={StaticResource NullToVisibilityConverter}}"/>
-                <Button Content="🔄 Process Return" Style="{DynamicResource PrimaryButton}" Width="180" Height="45" Command="{Binding ProcessReturnCommand}" FontSize="15" FontWeight="Bold"/>
+                <Button Content="🔄 Process Return" Style="{DynamicResource PrimaryButton}" Width="190" Height="48" Command="{Binding ProcessReturnCommand}" FontSize="15" FontWeight="Bold"/>
             </StackPanel>
         </Border>
     </Grid>

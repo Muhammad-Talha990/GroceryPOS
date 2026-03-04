@@ -46,13 +46,14 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             
-            // Unified search: by phone OR by name
+            // Optimized search: by name OR by phone using JOIN instead of subqueries
             cmd.CommandText = @"
                 SELECT c.*, 
-                       (SELECT COUNT(*) FROM Bill b WHERE b.CustomerId = c.CustomerId AND b.Type = 'Sale') as BillCount,
-                       (SELECT COALESCE(SUM(GrandTotal), 0) FROM Bill b WHERE b.CustomerId = c.CustomerId AND b.Type = 'Sale') as TotalAmount,
-                       (SELECT MAX(BillDateTime) FROM Bill b WHERE b.CustomerId = c.CustomerId AND b.Type = 'Sale') as LastVisit
-                FROM Customers c 
+                       COUNT(b.bill_id) as BillCount,
+                       COALESCE(SUM(b.GrandTotal), 0) as TotalAmount,
+                       MAX(b.BillDateTime) as LastVisit
+                FROM Customers c
+                LEFT JOIN Bill b ON c.CustomerId = b.CustomerId AND b.Type = 'Sale'
                 WHERE (c.Name LIKE @nameQuery) ";
 
             if (!string.IsNullOrEmpty(normalized))
@@ -62,7 +63,11 @@ namespace GroceryPOS.Data.Repositories
                 cmd.Parameters.AddWithValue("@exactPhone", normalized);
             }
 
-            cmd.CommandText += " ORDER BY BillCount DESC, c.Name ASC LIMIT 10;";
+            cmd.CommandText += @" 
+                GROUP BY c.CustomerId
+                ORDER BY BillCount DESC, c.Name ASC 
+                LIMIT 10;";
+            
             cmd.Parameters.AddWithValue("@nameQuery", "%" + query + "%");
 
             using var reader = cmd.ExecuteReader();

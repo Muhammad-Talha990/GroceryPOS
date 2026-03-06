@@ -65,6 +65,7 @@ public partial class App : Application
         services.AddSingleton<BillRepository>();
         services.AddSingleton<BillReturnRepository>();
         services.AddSingleton<CustomerRepository>();
+        services.AddSingleton<CreditPaymentRepository>();
 
         // --- Service Layer ---
         services.AddSingleton<DataCacheService>(); // Cache must be singleton for consistency
@@ -73,6 +74,7 @@ public partial class App : Application
         services.AddSingleton<ItemService>();
         services.AddSingleton<BillService>();
         services.AddSingleton<CustomerService>();
+        services.AddSingleton<CreditService>();
         services.AddSingleton<PrintService>();
         services.AddSingleton<ReportService>();
         services.AddSingleton<BackupService>();
@@ -93,6 +95,8 @@ public partial class App : Application
         services.AddTransient<SupplierBillsViewModel>();
         services.AddTransient<ReturnViewModel>();
         services.AddTransient<PendingPrintsViewModel>();
+        services.AddTransient<CustomerManagementViewModel>();
+        services.AddTransient<CustomerLedgerViewModel>();
 
         _serviceProvider = services.BuildServiceProvider();
     }

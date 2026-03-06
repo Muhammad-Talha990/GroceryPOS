@@ -1,0 +1,266 @@
+using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Windows;
+using System.Windows.Input;
+using GroceryPOS.Helpers;
+using GroceryPOS.Models;
+using GroceryPOS.Services;
+
+namespace GroceryPOS.ViewModels
+{
+    /// <summary>
+    /// ViewModel for the Customer Ledger screen.
+    /// Shows all bills for a customer with credit summary and allows recording payments.
+    /// </summary>
+    public class CustomerLedgerViewModel : BaseViewModel
+    {
+        private readonly CreditService _creditService;
+        private readonly CustomerService _customerService;
+
+        // ── Selected customer ──
+        private Customer? _customer;
+        public Customer? Customer
+        {
+            get => _customer;
+            private set => SetProperty(ref _customer, value);
+        }
+
+        // ── Ledger data ──
+        public ObservableCollection<Bill> LedgerEntries { get; } = new();
+
+        // ── Summary footer ──
+        private double _totalCredit;
+        public double TotalCredit
+        {
+            get => _totalCredit;
+            private set => SetProperty(ref _totalCredit, value);
+        }
+
+        private double _totalPaid;
+        public double TotalPaid
+        {
+            get => _totalPaid;
+            private set => SetProperty(ref _totalPaid, value);
+        }
+
+        private double _totalPending;
+        public double TotalPending
+        {
+            get => _totalPending;
+            private set => SetProperty(ref _totalPending, value);
+        }
+
+        // ── Record Payment panel ──
+        private bool _isPaymentPanelOpen;
+        public bool IsPaymentPanelOpen
+        {
+            get => _isPaymentPanelOpen;
+            set => SetProperty(ref _isPaymentPanelOpen, value);
+        }
+
+        private Bill? _selectedBill;
+        public Bill? SelectedBill
+        {
+            get => _selectedBill;
+            set
+            {
+                if (SetProperty(ref _selectedBill, value))
+                {
+                    OnPropertyChanged(nameof(HasSelectedBill));
+                    OnPropertyChanged(nameof(SelectedBillRemaining));
+                    LoadPaymentHistory();
+                }
+            }
+        }
+        public bool HasSelectedBill => SelectedBill != null;
+        public double SelectedBillRemaining => SelectedBill?.RemainingAmount ?? 0;
+
+        public ObservableCollection<CreditPayment> PaymentHistory { get; } = new();
+
+        private void LoadPaymentHistory()
+        {
+            PaymentHistory.Clear();
+            if (SelectedBill == null) return;
+
+            try
+            {
+                var history = _creditService.GetPaymentHistory(SelectedBill.BillId);
+                foreach (var p in history)
+                    PaymentHistory.Add(p);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("CustomerLedgerViewModel.LoadPaymentHistory failed", ex);
+            }
+        }
+
+        private string _paymentAmountText = string.Empty;
+        public string PaymentAmountText
+        {
+            get => _paymentAmountText;
+            set => SetProperty(ref _paymentAmountText, value);
+        }
+
+        private string _paymentNote = string.Empty;
+        public string PaymentNote
+        {
+            get => _paymentNote;
+            set => SetProperty(ref _paymentNote, value);
+        }
+
+        private string _paymentError = string.Empty;
+        public string PaymentError
+        {
+            get => _paymentError;
+            set => SetProperty(ref _paymentError, value);
+        }
+
+        private string _statusMessage = string.Empty;
+        public string StatusMessage
+        {
+            get => _statusMessage;
+            set => SetProperty(ref _statusMessage, value);
+        }
+
+        // ── Commands ──
+        public ICommand RefreshCommand { get; }
+        public ICommand OpenPaymentPanelCommand { get; }
+        public ICommand ClosePaymentPanelCommand { get; }
+        public ICommand RecordPaymentCommand { get; }
+        public ICommand PayFullRemainingCommand { get; }
+
+        /// <summary>Raised when the user wants to go back to Customer Management.</summary>
+        public event Action? GoBackRequested;
+        public ICommand GoBackCommand { get; }
+
+        public CustomerLedgerViewModel(CreditService creditService, CustomerService customerService)
+        {
+            _creditService  = creditService;
+            _customerService = customerService;
+
+            RefreshCommand          = new RelayCommand(_ => Refresh());
+            OpenPaymentPanelCommand = new RelayCommand(obj => OpenPaymentPanel(obj as Bill));
+            ClosePaymentPanelCommand= new RelayCommand(_ => ClosePaymentPanel());
+            RecordPaymentCommand    = new RelayCommand(_ => RecordPayment());
+            PayFullRemainingCommand = new RelayCommand(_ => PayFullRemaining());
+            GoBackCommand           = new RelayCommand(_ => GoBackRequested?.Invoke());
+        }
+
+        // ────────────────────────────────────────────
+        //  LOAD
+        // ────────────────────────────────────────────
+
+        public void Load(int customerId)
+        {
+            try
+            {
+                Customer = _customerService.GetCustomerById(customerId);
+                if (Customer == null)
+                {
+                    StatusMessage = "Customer not found.";
+                    return;
+                }
+                LoadLedger();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("CustomerLedgerViewModel.Load failed", ex);
+                StatusMessage = "⚠ Failed to load ledger.";
+            }
+        }
+
+        private void LoadLedger()
+        {
+            if (Customer == null) return;
+
+            try
+            {
+                var entries = _creditService.GetLedger(Customer.CustomerId);
+                LedgerEntries.Clear();
+                foreach (var b in entries)
+                    LedgerEntries.Add(b);
+
+                var (credit, paid, pending) = _creditService.GetPendingSummary(Customer.CustomerId);
+                TotalCredit  = credit;
+                TotalPaid    = paid;
+                TotalPending = pending;
+
+                // Refresh the customer's pending credit too
+                Customer.PendingCredit = pending;
+                OnPropertyChanged(nameof(Customer));
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("CustomerLedgerViewModel.LoadLedger failed", ex);
+                StatusMessage = "⚠ Failed to refresh ledger.";
+            }
+        }
+
+        private void Refresh()
+        {
+            ClosePaymentPanel();
+            LoadLedger();
+            StatusMessage = string.Empty;
+        }
+
+        // ────────────────────────────────────────────
+        //  PAYMENT RECORDING
+        // ────────────────────────────────────────────
+
+        private void OpenPaymentPanel(Bill? bill)
+        {
+            if (bill == null || !bill.HasPendingCredit) return;
+            SelectedBill       = bill;
+            PaymentAmountText  = string.Empty;
+            PaymentNote        = string.Empty;
+            PaymentError       = string.Empty;
+            IsPaymentPanelOpen = true;
+        }
+
+        private void ClosePaymentPanel()
+        {
+            IsPaymentPanelOpen = false;
+            SelectedBill       = null;
+            PaymentAmountText  = string.Empty;
+            PaymentError       = string.Empty;
+        }
+
+        private void PayFullRemaining()
+        {
+            if (SelectedBill != null)
+                PaymentAmountText = SelectedBill.RemainingAmount.ToString("F2");
+        }
+
+        private void RecordPayment()
+        {
+            try
+            {
+                PaymentError = string.Empty;
+
+                if (SelectedBill == null)
+                {
+                    PaymentError = "No bill selected.";
+                    return;
+                }
+
+                if (!double.TryParse(PaymentAmountText, out double amount) || amount <= 0)
+                {
+                    PaymentError = "Please enter a valid amount greater than zero.";
+                    return;
+                }
+
+                _creditService.RecordPayment(SelectedBill.BillId, amount, PaymentNote);
+
+                ClosePaymentPanel();
+                LoadLedger();
+                StatusMessage = $"✓ Payment of Rs. {amount:N2} recorded successfully.";
+            }
+            catch (Exception ex)
+            {
+                PaymentError = ex.Message;
+                AppLogger.Error("CustomerLedgerViewModel.RecordPayment failed", ex);
+            }
+        }
+    }
+}

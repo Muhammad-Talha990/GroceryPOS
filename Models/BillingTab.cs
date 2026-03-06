@@ -84,5 +84,13 @@ namespace GroceryPOS.Models
             get => _isActive;
             set => SetProperty(ref _isActive, value);
         }
+
+        /// <summary>For credit sales: amount paid now (may be less than GrandTotal).</summary>
+        private string _paidAmountText = string.Empty;
+        public string PaidAmountText
+        {
+            get => _paidAmountText;
+            set => SetProperty(ref _paidAmountText, value);
+        }
     }
 }

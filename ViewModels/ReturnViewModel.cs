@@ -57,6 +57,21 @@ namespace GroceryPOS.ViewModels
         public ICommand ClearFormCommand { get; }
         public ICommand TogglePreviewCommand { get; }
 
+        // ── Preview Calculation Properties ──
+        public decimal CurrentReturnGrandTotal => Items.Sum(i => (decimal)i.ReturnQuantity * (decimal)(OriginalBill?.Items.FirstOrDefault(bi => bi.ItemId == i.ItemId)?.UnitPrice ?? 0));
+        
+        public ObservableCollection<ReturnItemViewModel> CurrentReturnPreviewItems { get; } = new();
+
+        public void RefreshPreview()
+        {
+            CurrentReturnPreviewItems.Clear();
+            foreach (var item in Items.Where(i => i.ReturnQuantity > 0))
+            {
+                CurrentReturnPreviewItems.Add(item);
+            }
+            OnPropertyChanged(nameof(CurrentReturnGrandTotal));
+        }
+
         public ReturnViewModel(IReturnService returnService, AuthService authService, PrintService printService)
         {
             _returnService = returnService;
@@ -96,7 +111,8 @@ namespace GroceryPOS.ViewModels
                             OriginalQuantity = item.Quantity,
                             AlreadyReturned = alreadyReturned,
                             RemainingQuantity = item.Quantity - alreadyReturned,
-                            ReturnQuantity = 0
+                            ReturnQuantity = 0,
+                            UnitPrice = (decimal)item.UnitPrice
                         };
                         Items.Add(vm);
                     }
@@ -110,15 +126,17 @@ namespace GroceryPOS.ViewModels
                         {
                             ReturnHistory.Add(new BillReturn
                             {
-                                ReturnBillId = $"Ret#{seqIdx} ({retBill.InvoiceNumber})",
+                                ReturnBillId = $"Return {seqIdx}", // Simplified label for step-wise display
                                 ProductId = retItem.ItemId,
                                 ReturnQuantity = (int)Math.Abs(retItem.Quantity),
-                                ReturnDate = retBill.BillDateTime.ToString("dd-MM-yyyy HH:mm:ss"),
-                                ProductDescription = retItem.ItemDescription
+                                ReturnDate = retBill.BillDateTime.ToString("dd-MMM-yyyy HH:mm"),
+                                ProductDescription = retItem.ItemDescription,
+                                Id = seqIdx // abusing Id as sequence index for the preview list label
                             });
                         }
                         seqIdx++;
                     }
+                    RefreshPreview();
                 });
 
                 StatusMessage = $"✓ Bill #{billId} loaded with {result.Returns.Count} previous returns.";
@@ -211,8 +229,19 @@ namespace GroceryPOS.ViewModels
             {
                 if (value > RemainingQuantity) value = RemainingQuantity;
                 if (value < 0) value = 0;
-                SetProperty(ref _returnQuantity, value);
+                if (SetProperty(ref _returnQuantity, value))
+                {
+                    OnPropertyChanged(nameof(TotalPrice));
+                    if (Application.Current.MainWindow.DataContext is MainViewModel mainVM && 
+                        mainVM.CurrentView is ReturnViewModel returnVM)
+                    {
+                        returnVM.RefreshPreview();
+                    }
+                }
             }
         }
+
+        public decimal UnitPrice { get; set; }
+        public decimal TotalPrice => ReturnQuantity * UnitPrice;
     }
 }

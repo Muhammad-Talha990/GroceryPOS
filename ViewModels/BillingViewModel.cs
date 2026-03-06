@@ -30,10 +30,21 @@ namespace GroceryPOS.ViewModels
             get => _selectedTab;
             set
             {
-                if (_selectedTab != null) _selectedTab.IsActive = false;
+                if (_selectedTab != null)
+                {
+                    _selectedTab.IsActive = false;
+                    _selectedTab.CartItems.CollectionChanged -= OnCartItemsCollectionChanged;
+                    foreach (var item in _selectedTab.CartItems) item.PropertyChanged -= OnCartItemPropertyChanged;
+                }
+                
                 if (SetProperty(ref _selectedTab, value))
                 {
-                    if (_selectedTab != null) _selectedTab.IsActive = true;
+                    if (_selectedTab != null)
+                    {
+                        _selectedTab.IsActive = true;
+                        _selectedTab.CartItems.CollectionChanged += OnCartItemsCollectionChanged;
+                        foreach (var item in _selectedTab.CartItems) item.PropertyChanged += OnCartItemPropertyChanged;
+                    }
                     NotifyTabPropertiesChanged();
                     RecalculateTotal();
                 }
@@ -46,8 +57,22 @@ namespace GroceryPOS.ViewModels
         public string CashReceivedText { get => SelectedTab?.CashReceivedText ?? "0"; set { if (SelectedTab != null) { SelectedTab.CashReceivedText = value; CalculateChange(); OnPropertyChanged(); } } }
         public string InvoiceNumber { get => SelectedTab?.InvoiceNumber ?? "00000"; set { if (SelectedTab != null) { SelectedTab.InvoiceNumber = value; OnPropertyChanged(); } } }
 
-        public Customer? SelectedCustomer { get => SelectedTab?.Customer; set { if (SelectedTab != null) { SelectedTab.Customer = value; SelectedTab.CustomerId = value?.CustomerId; OnPropertyChanged(); OnPropertyChanged(nameof(HasSelectedCustomer)); } } }
+        public Customer? SelectedCustomer { get => SelectedTab?.Customer; set { if (SelectedTab != null) { SelectedTab.Customer = value; SelectedTab.CustomerId = value?.CustomerId; OnPropertyChanged(); OnPropertyChanged(nameof(HasSelectedCustomer)); OnPropertyChanged(nameof(IsWalkIn)); } } }
         public bool HasSelectedCustomer => SelectedCustomer != null;
+        public bool IsWalkIn => SelectedCustomer == null;
+
+        // ── Credit / Udhar ──
+        private double _pendingCreditAmount;
+        public double PendingCreditAmount
+        {
+            get => _pendingCreditAmount;
+            set { SetProperty(ref _pendingCreditAmount, value); OnPropertyChanged(nameof(HasPendingCredit)); OnPropertyChanged(nameof(PendingCreditDisplay)); }
+        }
+        public bool HasPendingCredit => PendingCreditAmount > 0 && HasSelectedCustomer;
+        public string PendingCreditDisplay => $"⚠ This customer has Rs. {PendingCreditAmount:N0} pending.";
+
+        public string PaidAmountText { get => SelectedTab?.PaidAmountText ?? string.Empty; set { if (SelectedTab != null) { SelectedTab.PaidAmountText = value; OnPropertyChanged(); } } }
+
         public string CustomerSearchQuery { get => SelectedTab?.CustomerSearchQuery ?? string.Empty; set { if (SelectedTab != null && SelectedTab.CustomerSearchQuery != value) { SelectedTab.CustomerSearchQuery = value; SearchCustomers(); OnPropertyChanged(); } } }
         public ObservableCollection<Customer> CustomerSearchResults => SelectedTab?.CustomerSearchResults ?? new();
         public ObservableCollection<Bill> CustomerBills => SelectedTab?.CustomerBills ?? new();
@@ -64,7 +89,43 @@ namespace GroceryPOS.ViewModels
         public string RegistrationErrorMessage { get; set; } = "";
 
         public ObservableCollection<Item> ItemList { get; set; } = new();
-        public Item? SelectedSearchItem { get; set; }
+        public ObservableCollection<Item> FilteredItemList { get; set; } = new();
+        
+        private string _productSearchText = "";
+        public string ProductSearchText
+        {
+            get => _productSearchText;
+            set 
+            { 
+                if (SetProperty(ref _productSearchText, value)) 
+                { 
+                    // If the text change matches the selected item's description, 
+                    // it's likely just arrow-key browsing. Skip filtering to keep the full list.
+                    if (SelectedSearchItem != null && SelectedSearchItem.Description == value)
+                    {
+                        return;
+                    }
+
+                    FilterProducts();
+                    // Open dropdown if we have text and matches
+                    IsProductDropDownOpen = !string.IsNullOrWhiteSpace(value) && FilteredItemList.Any();
+                } 
+            }
+        }
+
+        private bool _isProductDropDownOpen;
+        public bool IsProductDropDownOpen
+        {
+            get => _isProductDropDownOpen;
+            set => SetProperty(ref _isProductDropDownOpen, value);
+        }
+
+        private Item? _selectedSearchItem;
+        public Item? SelectedSearchItem
+        {
+            get => _selectedSearchItem;
+            set => SetProperty(ref _selectedSearchItem, value);
+        }
         public string BarcodeInput { get; set; } = "";
         public int QuantityInput { get; set; } = 1;
 
@@ -73,7 +134,27 @@ namespace GroceryPOS.ViewModels
         public double TaxAmount { get; set; }
         public double GrandTotal { get; set; }
         public double ChangeAmount { get; set; }
-        public bool IsChangeNegative => ChangeAmount < 0;
+        public bool IsChangeNegative => ChangeAmount < -0.01;
+        public bool IsChangeAmountVisible => !IsChangeNegative;
+        
+        public string ChangeDisplayLabel 
+        { 
+            get 
+            {
+                if (IsChangeNegative && IsWalkIn) return "INSUFFICIENT CASH";
+                if (IsChangeNegative && HasSelectedCustomer) return "CREDIT / DUE";
+                return "RETURN AMOUNT";
+            }
+        }
+
+        public string ChangeDisplayBrush
+        {
+            get
+            {
+                if (IsChangeNegative) return "#EF4444"; // Red
+                return "#3B82F6"; // Blue/Accent for return
+            }
+        }
         public string CurrentDateTime => DateTime.Now.ToString("dddd, dd MMMM yyyy HH:mm:ss");
         public DateTime CurrentTime => DateTime.Now;
         public string StatusMessage { get; set; } = "";
@@ -128,20 +209,119 @@ namespace GroceryPOS.ViewModels
             LoadProducts();
         }
 
-        private void LoadProducts() { ItemList = new ObservableCollection<Item>(_itemService.GetAllItems()); }
+        private void LoadProducts() { var items = _itemService.GetAllItems(); ItemList = new ObservableCollection<Item>(items); FilteredItemList = new ObservableCollection<Item>(items); }
+        private void FilterProducts()
+        {
+            var query = ProductSearchText ?? "";
+            var filtered = string.IsNullOrWhiteSpace(query) 
+                ? ItemList.ToList() 
+                : ItemList.Where(i => i.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            // Stabilize UI by modifying the collection instead of reassigning it
+            var toRemove = FilteredItemList.Where(i => !filtered.Contains(i)).ToList();
+            foreach (var item in toRemove) FilteredItemList.Remove(item);
+
+            for (int i = 0; i < filtered.Count; i++)
+            {
+                if (i >= FilteredItemList.Count || FilteredItemList[i] != filtered[i])
+                {
+                    if (i < FilteredItemList.Count) FilteredItemList.Insert(i, filtered[i]);
+                    else FilteredItemList.Add(filtered[i]);
+                }
+            }
+        }
         private void AddNewTab() { var tab = new BillingTab { TabName = $"Bill {Tabs.Count + 1}", InvoiceNumber = _billService.GetNextInvoiceNumber() }; Tabs.Add(tab); SelectedTab = tab; }
         private void CloseTab(BillingTab? tab) { if (tab == null || Tabs.Count <= 1) return; Tabs.Remove(tab); SelectedTab = Tabs.LastOrDefault(); for (int i = 0; i < Tabs.Count; i++) Tabs[i].TabName = $"Bill {i + 1}"; NotifyTabPropertiesChanged(); }
-        private void ScanBarcode() { string bc = !string.IsNullOrWhiteSpace(BarcodeInput) ? BarcodeInput : SelectedSearchItem?.ItemId ?? ""; if (string.IsNullOrWhiteSpace(bc)) return; var it = _itemService.GetItemByBarcode(bc); if (it != null) { AddToCart(it); BarcodeInput = ""; SelectedSearchItem = null; OnPropertyChanged(nameof(BarcodeInput)); } else { StatusMessage = "✗ Item not found."; OnPropertyChanged(nameof(StatusMessage)); } }
+        private void ScanBarcode() 
+        { 
+            string bc = !string.IsNullOrWhiteSpace(BarcodeInput) ? BarcodeInput : SelectedSearchItem?.ItemId ?? ""; 
+            if (string.IsNullOrWhiteSpace(bc)) return; 
+            
+            var it = _itemService.GetItemByBarcode(bc); 
+            if (it != null) 
+            { 
+                AddToCart(it); 
+                BarcodeInput = ""; 
+                SelectedSearchItem = null; 
+                ProductSearchText = string.Empty;
+                IsProductDropDownOpen = false;
+                OnPropertyChanged(nameof(BarcodeInput)); 
+                OnPropertyChanged(nameof(ProductSearchText));
+                OnPropertyChanged(nameof(IsProductDropDownOpen));
+            } 
+            else { StatusMessage = "✗ Item not found."; OnPropertyChanged(nameof(StatusMessage)); } 
+        }
         private void AddToCart(Item it) { if (SelectedTab == null) return; var ex = SelectedTab.CartItems.FirstOrDefault(i => i.ItemId == it.ItemId); if (ex != null) ex.Quantity += QuantityInput;            else SelectedTab.CartItems.Add(new CartItem { ItemId = it.ItemId, ItemDescription = it.Description, UnitPrice = it.SalePrice, Quantity = QuantityInput });
- QuantityInput = 1; RecalculateTotal(); }
+            QuantityInput = 1; RecalculateTotal(); }
         private void RemoveFromCart() { if (SelectedCartItem != null && SelectedTab != null) { SelectedTab.CartItems.Remove(SelectedCartItem); RecalculateTotal(); } }
         private void IncreaseQuantity() { if (SelectedCartItem != null) { SelectedCartItem.Quantity++; RecalculateTotal(); } }
         private void DecreaseQuantity() { if (SelectedCartItem != null && SelectedCartItem.Quantity > 1) { SelectedCartItem.Quantity--; RecalculateTotal(); } }
         private void RecalculateTotal() { if (SelectedTab == null) return; SubTotal = SelectedTab.CartItems.Sum(i => i.TotalPrice); double.TryParse(DiscountText, out var d); double.TryParse(TaxText, out var t); DiscountAmount = d; TaxAmount = t; GrandTotal = SubTotal - DiscountAmount + TaxAmount; CalculateChange(); OnPropertyChanged(nameof(SubTotal)); OnPropertyChanged(nameof(DiscountAmount)); OnPropertyChanged(nameof(TaxAmount)); OnPropertyChanged(nameof(GrandTotal)); OnPropertyChanged(nameof(CartItems)); }
-        private void CalculateChange() { if (double.TryParse(CashReceivedText, out var c)) ChangeAmount = c - GrandTotal; else ChangeAmount = -GrandTotal; OnPropertyChanged(nameof(ChangeAmount)); OnPropertyChanged(nameof(IsChangeNegative)); }
-        private async void CompleteSale() { try { if (SelectedTab == null || !SelectedTab.CartItems.Any()) { StatusMessage = "✗ Cart is empty."; OnPropertyChanged(nameof(StatusMessage)); return; } if (!double.TryParse(CashReceivedText, out var cr) || cr < GrandTotal) { StatusMessage = "✗ Insufficient cash."; OnPropertyChanged(nameof(StatusMessage)); return; } double.TryParse(DiscountText, out var d); double.TryParse(TaxText, out var t); var sb = _billService.CompleteBill(_authService.CurrentUser?.Id, SelectedCustomer?.CustomerId, SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), d, t, cr); _lastBill = sb; await AttemptPrint(sb); StatusMessage = $"✓ Sale Completed: Bill #{sb.InvoiceNumber}"; OnPropertyChanged(nameof(StatusMessage)); if (Tabs.Count > 1) CloseTab(SelectedTab); else ClearCart(); } catch (Exception ex) { StatusMessage = $"✗ Bill failed: {ex.Message}"; OnPropertyChanged(nameof(StatusMessage)); AppLogger.Error("Complete bill failed", ex); } }
+        private void CalculateChange() { if (double.TryParse(CashReceivedText, out var c)) ChangeAmount = c - GrandTotal; else ChangeAmount = -GrandTotal; OnPropertyChanged(nameof(ChangeAmount)); OnPropertyChanged(nameof(ChangeAmountAbs)); OnPropertyChanged(nameof(IsChangeNegative)); OnPropertyChanged(nameof(IsChangeAmountVisible)); OnPropertyChanged(nameof(ChangeDisplayLabel)); OnPropertyChanged(nameof(ChangeDisplayBrush)); }
+        public double ChangeAmountAbs => Math.Abs(ChangeAmount);
+        private async void CompleteSale() 
+        { 
+            try 
+            { 
+                if (SelectedTab == null || !SelectedTab.CartItems.Any()) { StatusMessage = "✗ Cart is empty."; OnPropertyChanged(nameof(StatusMessage)); return; } 
+
+                double.TryParse(DiscountText, out var d); 
+                double.TryParse(TaxText, out var t);
+                double sub     = SelectedTab.CartItems.Sum(i => i.TotalPrice);
+                double grand   = Math.Round(sub - d + t, 2);
+
+                double.TryParse(CashReceivedText, out var cashReceived);
+
+                // Parse paid amount — if empty, use cash received (capped at grand total)
+                double paidAmount;
+                if (!string.IsNullOrWhiteSpace(PaidAmountText) && double.TryParse(PaidAmountText, out var pa))
+                {
+                    paidAmount = pa;
+                }
+                else
+                {
+                    // Default to cash received for customers, capped at grand total
+                    paidAmount = Math.Min(cashReceived, grand);
+                }
+
+                // For walk-in customers, enforce full payment
+                if (IsWalkIn)
+                {
+                    if (cashReceived < grand - 0.01)
+                    { StatusMessage = "✗ Insufficient cash."; OnPropertyChanged(nameof(StatusMessage)); return; }
+                    paidAmount = grand; 
+                }
+
+                var sb = _billService.CompleteBill(_authService.CurrentUser?.Id, SelectedCustomer?.CustomerId, SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), d, t, cashReceived, paidAmount);
+                _lastBill = sb;
+                await AttemptPrint(sb);
+                StatusMessage = $"✓ Sale Completed: Bill #{sb.InvoiceNumber} | {sb.PaymentStatus}";
+                OnPropertyChanged(nameof(StatusMessage));
+                if (Tabs.Count > 1) CloseTab(SelectedTab); else ClearCart(); 
+            } 
+            catch (Exception ex) { StatusMessage = $"✗ Bill failed: {ex.Message}"; OnPropertyChanged(nameof(StatusMessage)); AppLogger.Error("Complete bill failed", ex); } 
+        }
         private async Task AttemptPrint(Bill b) { b.PrintAttempts++; if (!_printService.IsPrinterOnline()) { if (MessageBox.Show("Printer offline. Retry?", "Printer Error", MessageBoxButton.YesNo) == MessageBoxResult.Yes) await AttemptPrint(b); else _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); return; } if (_printService.PrintReceipt(b, _authService.CurrentUser?.FullName ?? "Cashier")) _billRepo.UpdatePrintStatus(b.BillId, true, DateTime.Now, b.PrintAttempts); else _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); }
-        private void ClearCart() { if (SelectedTab == null) return; SelectedTab.CartItems.Clear(); SelectedTab.DiscountText = "0"; SelectedTab.TaxText = "0"; SelectedTab.CashReceivedText = "0"; ClearCustomer(); RecalculateTotal(); InvoiceNumber = _billService.GetNextInvoiceNumber(); }
+        private void ClearCart() 
+        { 
+            if (SelectedTab == null) return; 
+            SelectedTab.CartItems.Clear(); 
+            SelectedTab.DiscountText = "0"; 
+            SelectedTab.TaxText = "0"; 
+            SelectedTab.CashReceivedText = "0"; 
+            SelectedTab.PaidAmountText = string.Empty; 
+            PendingCreditAmount = 0; 
+            ClearCustomer(); 
+            RecalculateTotal(); 
+            
+            // Ensure UI is notified of reset fields
+            OnPropertyChanged(nameof(CashReceivedText));
+            OnPropertyChanged(nameof(DiscountText));
+            OnPropertyChanged(nameof(TaxText));
+            OnPropertyChanged(nameof(PaidAmountText));
+            
+            InvoiceNumber = _billService.GetNextInvoiceNumber(); 
+        }
         private void PrintLastReceipt() { if (_lastBill != null) _ = AttemptPrint(_lastBill); }
         private void SearchCustomers() { if (SelectedTab == null) return; SelectedSearchResult = null; if (string.IsNullOrWhiteSpace(CustomerSearchQuery) || CustomerSearchQuery.Length < 1) { SelectedTab.CustomerSearchResults.Clear(); OnPropertyChanged(nameof(CustomerSearchResults)); return; } var results = _customerService.SearchCustomers(CustomerSearchQuery); SelectedTab.CustomerSearchResults.Clear(); foreach (var c in results) SelectedTab.CustomerSearchResults.Add(c); OnPropertyChanged(nameof(CustomerSearchResults)); }
         private void SelectCustomer(Customer? c)
@@ -156,8 +336,11 @@ namespace GroceryPOS.ViewModels
             OnPropertyChanged(nameof(CustomerSearchQuery));
             OnPropertyChanged(nameof(CustomerSearchResults));
             LoadCustomerHistory(targetCustomer.CustomerId);
+
+            // Load pending credit for warning badge
+            PendingCreditAmount = _customerService.GetPendingCredit(targetCustomer.CustomerId);
         }
-        private void ClearCustomer() { if (SelectedTab == null) return; SelectedCustomer = null; SelectedTab.CustomerBills.Clear(); SelectedTab.CustomerSearchQuery = ""; SelectedTab.CustomerSearchResults.Clear(); OnPropertyChanged(nameof(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); }
+        private void ClearCustomer() { if (SelectedTab == null) return; SelectedCustomer = null; SelectedTab.CustomerBills.Clear(); SelectedTab.CustomerSearchQuery = ""; SelectedTab.CustomerSearchResults.Clear(); PendingCreditAmount = 0; OnPropertyChanged(nameof(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); OnPropertyChanged(nameof(IsWalkIn)); }
         private void LoadCustomerHistory(int id) { if (SelectedTab == null) return; var bills = _billRepo.GetBillsByCustomerId(id); SelectedTab.CustomerBills.Clear(); foreach (var b in bills) SelectedTab.CustomerBills.Add(b); OnPropertyChanged(nameof(CustomerBills)); }
         private void RepeatLastOrder() { var lb = CustomerBills.FirstOrDefault(); if (lb != null) LoadBillIntoCart(lb); }
         private void LoadBillIntoCart(Bill b) { if (SelectedTab == null) return; SelectedTab.CartItems.Clear(); foreach (var it in b.Items) SelectedTab.CartItems.Add(new CartItem { ItemId = it.ItemId, ItemDescription = it.ItemDescription, UnitPrice = it.UnitPrice, Quantity = it.Quantity }); RecalculateTotal(); }
@@ -203,7 +386,29 @@ namespace GroceryPOS.ViewModels
                 SelectedSearchResult = CustomerSearchResults[nextIndex];
             }
         }
-        private void NotifyTabPropertiesChanged() { OnPropertyChanged(nameof(CartItems)); OnPropertyChanged(nameof(DiscountText)); OnPropertyChanged(nameof(TaxText)); OnPropertyChanged(nameof(CashReceivedText)); OnPropertyChanged(nameof(InvoiceNumber)); OnPropertyChanged(nameof(SelectedCustomer)); OnPropertyChanged(nameof(HasSelectedCustomer)); OnPropertyChanged(nameof(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); OnPropertyChanged(nameof(SelectedSearchResult)); OnPropertyChanged(nameof(CustomerBills)); }
+
+        private void OnCartItemsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (e.OldItems != null)
+            {
+                foreach (CartItem item in e.OldItems) item.PropertyChanged -= OnCartItemPropertyChanged;
+            }
+            if (e.NewItems != null)
+            {
+                foreach (CartItem item in e.NewItems) item.PropertyChanged += OnCartItemPropertyChanged;
+            }
+            RecalculateTotal();
+        }
+
+        private void OnCartItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(CartItem.Quantity) || e.PropertyName == nameof(CartItem.TotalPrice))
+            {
+                RecalculateTotal();
+            }
+        }
+
+        private void NotifyTabPropertiesChanged() { OnPropertyChanged(nameof(CartItems)); OnPropertyChanged(nameof(DiscountText)); OnPropertyChanged(nameof(TaxText)); OnPropertyChanged(nameof(CashReceivedText)); OnPropertyChanged(nameof(PaidAmountText)); OnPropertyChanged(nameof(InvoiceNumber)); OnPropertyChanged(nameof(SelectedCustomer)); OnPropertyChanged(nameof(HasSelectedCustomer)); OnPropertyChanged(nameof(IsWalkIn)); OnPropertyChanged(nameof(CustomerSearchQuery)); OnPropertyChanged(nameof(CustomerSearchResults)); OnPropertyChanged(nameof(SelectedSearchResult)); OnPropertyChanged(nameof(CustomerBills)); }
         public override void Dispose() { _timer.Stop(); base.Dispose(); }
     }
 }

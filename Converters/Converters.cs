@@ -101,4 +101,37 @@ namespace GroceryPOS.Converters
         }
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
     }
+
+    /// <summary>Returns true if value > 0 (for use with DataTrigger).</summary>
+    public class GreaterThanZeroConverter : IValueConverter
+    {
+        public static readonly GreaterThanZeroConverter Instance = new();
+
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is double d) return d > 0;
+            if (value is int i) return i > 0;
+            if (value is decimal dec) return dec > 0;
+            return false;
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    /// <summary>Converts PaymentStatus string to a SolidColorBrush.</summary>
+    public class PaymentStatusColorConverter : IValueConverter
+    {
+        public static readonly PaymentStatusColorConverter Instance = new();
+
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return (value?.ToString()) switch
+            {
+                "Paid"    => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x22, 0xC5, 0x5E)),
+                "Partial" => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF5, 0x9E, 0x0B)),
+                "Unpaid"  => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xEF, 0x44, 0x44)),
+                _         => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x94, 0xA3, 0xB8)),
+            };
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
 }

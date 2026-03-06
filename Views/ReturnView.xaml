@@ -202,7 +202,7 @@
         <DockPanel>
             <!-- Preview Header -->
             <Grid DockPanel.Dock="Top" Margin="20,16">
-                <TextBlock Text="Receipt Preview" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryBrush}"/>
+                <TextBlock Text="Return Journey Preview" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryBrush}"/>
                 <Button Content="X" HorizontalAlignment="Right" VerticalAlignment="Center" 
                         Background="Transparent" BorderThickness="0" Foreground="{DynamicResource SubTextBrush}"
                         Command="{Binding TogglePreviewCommand}" Cursor="Hand" FontSize="14">
@@ -230,92 +230,98 @@
                     
                     <Border BorderThickness="0,0,0,1" BorderBrush="#E2E8F0" Margin="0,12" SnapsToDevicePixels="True"/>
                     
-                    <!-- Invoice Info -->
+                    <!-- ─── ORIGINAL BILL SECTION ─── -->
+                    <TextBlock Text="━ ORIGINAL PURCHASE ━" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}" HorizontalAlignment="Center" Margin="0,5"/>
                     <Grid>
-                        <TextBlock Text="{Binding OriginalBill.InvoiceNumber, StringFormat='No: {0}'}" FontSize="11" Foreground="#475569" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding OriginalBill.BillDateTime, StringFormat='{}{0:HH:mm}'}" FontSize="11" HorizontalAlignment="Right" Foreground="#64748B"/>
-                    </Grid>
-                    <TextBlock Text="{Binding OriginalBill.BillDateTime, StringFormat='{}{0:dd MMM yyyy}'}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
-
-                    <Border BorderThickness="0,0,0,1" BorderBrush="#E2E8F0" Margin="0,12" SnapsToDevicePixels="True"/>
-                    
-                    <!-- Items Header -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Product Details" FontSize="11" FontWeight="Bold" Foreground="#1E293B"/>
-                        <TextBlock Grid.Column="1" Text="Total (Rs)" FontSize="11" FontWeight="Bold" Foreground="#1E293B"/>
+                        <TextBlock Text="{Binding OriginalBill.InvoiceNumber, StringFormat='No: {0}'}" FontSize="10" Foreground="#475569" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding OriginalBill.BillDateTime, StringFormat='{}{0:dd MMM HH:mm}'}" FontSize="10" HorizontalAlignment="Right" Foreground="#64748B"/>
                     </Grid>
                     
-                    <!-- Items List -->
-                    <ItemsControl ItemsSource="{Binding OriginalBill.Items}">
+                    <ItemsControl ItemsSource="{Binding OriginalBill.Items}" Margin="0,5,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="0,4">
-                                    <StackPanel Orientation="Vertical">
-                                        <TextBlock Text="{Binding ItemDescription}" FontSize="12" Foreground="#334155" FontWeight="Normal" TextWrapping="Wrap"/>
-                                        <TextBlock FontSize="10" Foreground="#94A3B8" Margin="0,2,0,0">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Quantity}" Value="1">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="{}{0:N0} x {1}">
-                                                    <Binding Path="UnitPrice"/>
-                                                    <Binding Path="Quantity"/>
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding TotalPrice, StringFormat='{}{0:N2}'}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Top" Foreground="#1E293B"/>
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="{Binding ItemDescription}" FontSize="11" Foreground="#475569" MaxWidth="180" TextWrapping="NoWrap"/>
+                                    <TextBlock Text="{Binding Quantity, StringFormat='x{0}'}" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Right" Margin="0,0,60,0"/>
+                                    <TextBlock Text="{Binding TotalPrice, StringFormat='{}{0:N2}'}" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B"/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    
-                    <Rectangle Stroke="#E2E8F0" StrokeDashArray="4 2" StrokeThickness="1" Height="1" Margin="0,15" SnapsToDevicePixels="True"/>
-                    
-                    <!-- Totals Area -->
-                    <Grid Margin="0,4">
-                        <TextBlock Text="Sub Total" FontSize="12" Foreground="#64748B"/>
-                        <TextBlock Text="{Binding OriginalBill.SubTotal, StringFormat='Rs.{0:N2}'}" FontSize="12" HorizontalAlignment="Right" Foreground="#1E293B" FontWeight="Bold"/>
-                    </Grid>
-                    <Grid Margin="0,4">
-                        <TextBlock Text="Discount" FontSize="12" Foreground="#64748B"/>
-                        <TextBlock Text="{Binding OriginalBill.DiscountAmount, StringFormat='-Rs.{0:N2}'}" FontSize="12" HorizontalAlignment="Right" Foreground="#EF4444" FontWeight="Bold"/>
-                    </Grid>
-                    <Grid Margin="0,4">
-                        <TextBlock Text="Tax" FontSize="12" Foreground="#64748B"/>
-                        <TextBlock Text="{Binding OriginalBill.TaxAmount, StringFormat='Rs.{0:N2}'}" FontSize="12" HorizontalAlignment="Right" Foreground="#1E293B" FontWeight="Bold"/>
-                    </Grid>
+                    <TextBlock Text="{Binding OriginalBill.GrandTotal, StringFormat='Original Total: Rs.{0:N0}'}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#64748B" Margin="0,4,0,0"/>
 
-                    <Border Background="#F8FAFC" CornerRadius="8" Padding="12,10" Margin="0,10">
-                        <Grid>
-                            <TextBlock Text="NET TOTAL" FontSize="14" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding OriginalBill.GrandTotal, StringFormat='Rs.{0:N0}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Right" Foreground="{DynamicResource PrimaryBrush}"/>
-                        </Grid>
-                    </Border>
+                    <Border BorderThickness="0,0,0,1" BorderBrush="#E2E8F0" Margin="0,12" SnapsToDevicePixels="True"/>
 
-                    <Grid Margin="0,2">
-                        <TextBlock Text="Cash Paid" FontSize="11" Foreground="#64748B"/>
-                        <TextBlock Text="{Binding OriginalBill.CashReceived, StringFormat='Rs.{0}'}" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B"/>
-                    </Grid>
-                    <Grid Margin="0,2">
-                        <TextBlock Text="Change Due" FontSize="11" Foreground="#64748B"/>
-                        <TextBlock Text="{Binding OriginalBill.ChangeAmount, StringFormat='Rs.{0:N2}'}" FontSize="11" HorizontalAlignment="Right" Foreground="#1E293B" FontWeight="Bold"/>
-                    </Grid>
+                    <!-- ─── PREVIOUS RETURNS SECTION ─── -->
+                    <ItemsControl ItemsSource="{Binding ReturnHistory}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,0,12">
+                                    <TextBlock FontSize="10" FontWeight="Bold" Foreground="#EF4444" HorizontalAlignment="Center" Margin="0,0,0,4">
+                                        <Run Text="━ "/><Run Text="{Binding ReturnBillId, Mode=OneWay}"/><Run Text=" (Past) ━"/>
+                                    </TextBlock>
+                                    <Grid>
+                                        <TextBlock Text="{Binding ProductDescription}" FontSize="11" Foreground="#475569" MaxWidth="180"/>
+                                        <TextBlock Text="{Binding ReturnQuantity, StringFormat='x{0}'}" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Right" Margin="0,0,10,0"/>
+                                        <TextBlock Text="{Binding ReturnDate}" FontSize="9" Foreground="#94A3B8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-12"/>
+                                    </Grid>
+                                    <Separator Background="#F1F5F9" Margin="0,15,0,2"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- ─── NEW RETURN PREVIEW ─── -->
+                    <StackPanel Visibility="{Binding CurrentReturnPreviewItems.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                        <TextBlock Text="━━━ NEW RETURN (NOW) ━━━" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SuccessBrush}" HorizontalAlignment="Center" Margin="0,10,0,10"/>
+                        
+                        <ItemsControl ItemsSource="{Binding CurrentReturnPreviewItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,4">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#334155" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding ReturnQuantity, StringFormat='Qty to return: {0}'}" FontSize="10" Foreground="#64748B"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding TotalPrice, StringFormat='{}{0:N2}'}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="#1E293B"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Rectangle Stroke="#E2E8F0" StrokeDashArray="4 2" StrokeThickness="1" Height="1" Margin="0,15" SnapsToDevicePixels="True"/>
+                        
+                        <!-- Totals Area -->
+                        <Border Background="#F0FDF4" CornerRadius="8" Padding="12,10" Margin="0,10">
+                            <Grid>
+                                <TextBlock Text="RETURN TOTAL" FontSize="14" FontWeight="Bold" Foreground="#166534" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CurrentReturnGrandTotal, StringFormat='Rs.{0:N0}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#15803D"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <TextBlock Text="No items selected for return" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Center" FontStyle="Italic" Margin="0,20">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentReturnPreviewItems.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
 
                     <!-- Footer -->
                     <StackPanel Margin="0,30,0,10">
                         <TextBlock Text="Thank you for your business!" FontSize="11" HorizontalAlignment="Center" Foreground="#94A3B8"/>
-                        <TextBlock Text="Visit us again soon" FontSize="10" HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,4,0,0"/>
+                        <TextBlock Text="Return Receipt Preview" FontSize="10" HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,4,0,0"/>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

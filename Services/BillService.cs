@@ -36,15 +36,15 @@ namespace GroceryPOS.Services
 
         /// <summary>
         /// Validates inputs, calculates totals, and saves the bill atomically.
+        /// For credit sales: paidAmount &lt; grandTotal is only allowed for registered customers (non-null customerId).
+        /// Walk-in customers (customerId == null) must pay in full.
         /// </summary>
-        /// <param name="userId">Cashier user ID (nullable).</param>
-        /// <param name="items">Line items with ItemId, Quantity, UnitPrice.</param>
-        /// <param name="discountAmount">Flat discount amount.</param>
-        /// <param name="taxAmount">Flat tax amount.</param>
-        /// <param name="cashReceived">Cash received from customer.</param>
-        /// <returns>The completed Bill with generated BillId.</returns>
+        /// <param name="paidAmount">
+        /// Amount physically paid now. Defaults to grandTotal (full payment).
+        /// Pass less than grandTotal for a credit/udhar sale (registered customers only).
+        /// </param>
         public Bill CompleteBill(int? userId, int? customerId, List<BillDescription> items,
-            double discountAmount, double taxAmount, double cashReceived)
+            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1)
         {
             // ── Validate inputs ──
             if (items == null || items.Count == 0)
@@ -67,37 +67,60 @@ namespace GroceryPOS.Services
             foreach (var item in items)
                 item.TotalPrice = item.Quantity * item.UnitPrice;
 
-            double subTotal = items.Sum(i => i.TotalPrice);
+            double subTotal  = items.Sum(i => i.TotalPrice);
             double grandTotal = Math.Round(subTotal - discountAmount + taxAmount, 2);
-            double changeGiven = Math.Round(cashReceived - grandTotal, 2);
 
-            // ── Validate cash ──
-            if (cashReceived < grandTotal)
-                throw new InvalidOperationException(
-                    $"Insufficient cash. Grand Total: Rs.{grandTotal:N2}, Cash Received: Rs.{cashReceived:N2}");
+            // If paidAmount was not provided, default to full payment
+            if (paidAmount < 0) paidAmount = grandTotal;
+            paidAmount = Math.Round(paidAmount, 2);
+
+            // ── Enforce credit rules ──
+            if (paidAmount < grandTotal)
+            {
+                if (customerId == null)
+                    throw new InvalidOperationException("Credit sales are not allowed for walk-in customers. Please enter the full amount or register the customer.");
+
+                if (paidAmount < 0)
+                    throw new ArgumentException("Paid amount cannot be negative.");
+            }
+            else
+            {
+                // If paying more than total, cap at total (no credit given)
+                paidAmount = grandTotal;
+            }
+
+            double changeGiven    = Math.Round(cashReceived - paidAmount, 2);
+            double remainingAmount = Math.Round(grandTotal - paidAmount, 2);
+
+            // Derive payment status
+            string paymentStatus = remainingAmount <= 0 ? "Paid"
+                                   : paidAmount > 0      ? "Partial"
+                                                         : "Unpaid";
 
             // ── Build Bill object ──
             var bill = new Bill
             {
-                BillDateTime = DateTime.Now,
-                SubTotal = subTotal,
-                DiscountAmount = discountAmount,
-                TaxAmount = taxAmount,
-                GrandTotal = grandTotal,
-                CashReceived = cashReceived,
-                ChangeGiven = changeGiven,
-                UserId = userId,
-                CustomerId = customerId
+                BillDateTime    = DateTime.Now,
+                SubTotal        = subTotal,
+                DiscountAmount  = discountAmount,
+                TaxAmount       = taxAmount,
+                GrandTotal      = grandTotal,
+                CashReceived    = cashReceived,
+                ChangeGiven     = Math.Max(0, changeGiven),
+                UserId          = userId,
+                CustomerId      = customerId,
+                PaidAmount      = paidAmount,
+                RemainingAmount = remainingAmount,
+                PaymentStatus   = paymentStatus
             };
 
             // ── Save atomically (bill + items + stock) ──
             var savedBill = _billRepo.SaveBillWithTransaction(bill, items);
-            
+
             // ── Update Cache & UI after successful commit ──
             foreach (var item in items)
-            {
                 _cache.UpdateStockInCache(item.ItemId, -item.Quantity);
-            }
+
             _stockService.NotifyChanged();
 
             return savedBill;

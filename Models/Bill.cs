@@ -74,10 +74,32 @@ namespace GroceryPOS.Models
         /// <summary>Number of failed or successful print attempts.</summary>
         public int PrintAttempts { get; set; }
 
+        // --- Credit / Udhar Tracking ---
+        /// <summary>Amount actually paid at time of sale (may be less than GrandTotal for credit).</summary>
+        public double PaidAmount { get; set; }
+
+        /// <summary>Outstanding balance = GrandTotal - PaidAmount. Stored in DB.</summary>
+        public double RemainingAmount { get; set; }
+
+        /// <summary>"Paid" | "Partial" | "Unpaid"</summary>
+        public string PaymentStatus { get; set; } = "Paid";
+
         /// <summary>Helper to check if this bill needs printing.</summary>
         public bool IsPendingPrint => !IsPrinted && Status != "Cancelled";
 
         /// <summary>Helper to check if this is a return bill.</summary>
         public bool IsReturn => Type == "Return";
+
+        /// <summary>True when customer still owes money on this bill.</summary>
+        public bool HasPendingCredit => RemainingAmount > 0 && Type == "Sale" && Status != "Cancelled";
+
+        /// <summary>UI color key for payment status badges.</summary>
+        public string PaymentStatusColor => PaymentStatus switch
+        {
+            "Paid"    => "#22C55E",  // green
+            "Partial" => "#F59E0B",  // amber
+            "Unpaid"  => "#EF4444",  // red
+            _         => "#94A3B8"   // slate
+        };
     }
 }

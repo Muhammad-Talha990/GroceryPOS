@@ -13,7 +13,7 @@
         <converters:CountToVisibilityConverter x:Key="InverseCountToVis" Inverse="True"/>
         <converters:StringToVisibilityConverter x:Key="StringToVis"/>
     </UserControl.Resources>
-    <Grid Margin="30,24">
+    <Grid Margin="20,12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="380"/>
@@ -23,7 +23,7 @@
         <!-- Left: Cart Area -->
         <DockPanel Grid.Column="0" Margin="0,0,16,0">
             <!-- Header & Tabs -->
-            <Grid DockPanel.Dock="Top" Margin="0,0,0,16">
+            <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
                 <StackPanel>
                     <TextBlock Text="💳 Billing" FontSize="24" FontWeight="Bold"
                                Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
@@ -110,7 +110,7 @@
             </Grid>
 
             <!-- Customer Section -->
-            <Border DockPanel.Dock="Top" Style="{DynamicResource CardBorder}" Padding="16" Margin="0,0,0,16">
+            <Border DockPanel.Dock="Top" Style="{DynamicResource CardBorder}" Padding="12,8" Margin="0,0,0,8">
                 <StackPanel>
                     <Grid Margin="0,0,0,8">
                         <TextBlock Text="👤 Customer Information" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"/>
@@ -138,7 +138,7 @@
                         </TextBox>
 
                         <!-- Selected Customer Info -->
-                        <Border Background="{DynamicResource PrimaryBrush}" CornerRadius="8" Padding="15,10"
+                        <Border Background="{DynamicResource PrimaryBrush}" CornerRadius="8" Padding="12,8"
                                 Visibility="{Binding HasSelectedCustomer, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <Grid>
@@ -153,59 +153,66 @@
                                             Command="{Binding ClearCustomerCommand}" Cursor="Hand"/>
                                 </Grid>
 
-                                <Separator Background="#33FFFFFF" Margin="0,8"/>
+                                <Separator Background="#33FFFFFF" Margin="0,6"/>
 
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <StackPanel>
-                                        <TextBlock Text="BILL HISTORY" Foreground="#BBFFFFFF" FontSize="9" FontWeight="Black" Margin="0,0,0,4"/>
-                                        <ComboBox ItemsSource="{Binding CustomerBills}"
-                                                  SelectedItem="{Binding SelectedHistoryBill}"
-                                                  Background="#1AFFFFFF" BorderThickness="0" Foreground="Black"
-                                                  HorizontalAlignment="Stretch"
-                                                  Visibility="{Binding CustomerBills.Count, Converter={StaticResource CountToVis}}">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Margin="4">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding InvoiceNumber}" FontWeight="Bold" Width="70"/>
-                                                        <TextBlock Grid.Column="1" Text="{Binding BillDateTime, StringFormat='{}{0:MMM dd, HH:mm}'}" Margin="10,0" Opacity="0.7"/>
-                                                        <TextBlock Grid.Column="2" Text="{Binding GrandTotal, StringFormat='{}Rs.{0:N0}'}" FontWeight="Black"/>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ComboBox>
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="BILL HISTORY:" Foreground="#BBFFFFFF" FontSize="10" FontWeight="Black" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <ComboBox ItemsSource="{Binding CustomerBills}"
+                                                      SelectedItem="{Binding SelectedHistoryBill}"
+                                                      Background="#1AFFFFFF" BorderThickness="0" Foreground="Black"
+                                                      MinWidth="200" Height="28"
+                                                      Visibility="{Binding CustomerBills.Count, Converter={StaticResource CountToVis}}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="4">
+                                                            <Grid.Resources>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasPendingCredit}" Value="True">
+                                                                            <Setter Property="Foreground" Value="#EF4444"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Grid.Resources>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding InvoiceNumber}" FontWeight="Bold" Width="70"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding BillDateTime, StringFormat='{}{0:MMM dd, HH:mm}'}" Margin="10,0" Opacity="0.7"/>
+                                                            <TextBlock Grid.Column="2" FontWeight="Black" Text="{Binding GrandTotal, StringFormat='Rs.{0:N0}'}"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <TextBlock Text="No past bills found." 
+                                                       Foreground="#99FFFFFF" FontSize="11" FontStyle="Italic"
+                                                       VerticalAlignment="Center"
+                                                       Visibility="{Binding CustomerBills.Count, Converter={StaticResource InverseCountToVis}}"/>
+                                        </StackPanel>
 
-                                        <!-- No Bills Message -->
-                                        <TextBlock Text="No past bills found for this customer." 
-                                                   Foreground="#99FFFFFF" FontSize="12" FontStyle="Italic"
-                                                   Margin="0,4,0,0"
-                                                   Visibility="{Binding CustomerBills.Count, Converter={StaticResource InverseCountToVis}}"/>
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,15,0,0">
-                                        <Button Content="🔍 SEARCH ANOTHER" 
-                                                Style="{StaticResource PrimaryButton}" 
-                                                Padding="12,0" Height="32" Margin="0,0,8,0"
-                                                Background="#33FFFFFF" BorderThickness="1" BorderBrush="#66FFFFFF"
-                                                Command="{Binding ClearCustomerCommand}"
-                                                ToolTip="Clear selection and search for a different phone number"/>
-                                                
-                                        <Button Content="↺ REPEAT LAST" 
-                                                Style="{StaticResource AccentButton}" 
-                                                Padding="12,0" Height="32"
-                                                Command="{Binding RepeatOrderCommand}"
-                                                ToolTip="Quickly reload the most recent order"/>
-                                    </StackPanel>
-                                </Grid>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="🔍 SEARCH" 
+                                                    Style="{StaticResource PrimaryButton}" 
+                                                    Padding="8,0" Height="28" Margin="0,0,6,0" FontSize="10"
+                                                    Background="#33FFFFFF" BorderThickness="1" BorderBrush="#66FFFFFF"
+                                                    Command="{Binding ClearCustomerCommand}"
+                                                    ToolTip="Clear selection and search for a different phone number"/>
+                                                    
+                                            <Button Content="↺ REPEAT" 
+                                                    Style="{StaticResource AccentButton}" 
+                                                    Padding="8,0" Height="28" FontSize="10"
+                                                    Command="{Binding RepeatOrderCommand}"
+                                                    ToolTip="Quickly reload the most recent order"/>
+                                        </StackPanel>
+                                    </Grid>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -269,23 +276,52 @@
                 </StackPanel>
             </Border>
 
+            <!-- ═══ Pending Credit Warning Badge ═══ -->
+            <Border DockPanel.Dock="Top" CornerRadius="6" Padding="12,6" Margin="0,0,0,8"
+                    Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1"
+                    Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="⚠" FontSize="16" Foreground="#DC2626" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#DC2626">
+                            <Run Text="This customer has Rs."/>
+                            <Run Text="{Binding PendingCreditAmount, StringFormat='{}{0:N0}', Mode=OneWay}" FontWeight="Bold"/>
+                            <Run Text="pending credit (Udhar)."/>
+                        </TextBlock>
+                        <TextBlock Text="Collect previous dues before extending more credit." FontSize="11" Foreground="#991B1B" Opacity="0.8" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Search & Barcode -->
-            <Border DockPanel.Dock="Top" Style="{DynamicResource CardBorder}" Padding="16" Margin="0,0,0,16">
+            <Border DockPanel.Dock="Top" Style="{DynamicResource CardBorder}" Padding="12,10" Margin="0,0,0,8">
                 <StackPanel>
                     <!-- Search Product -->
                     <TextBlock Text="Search Product" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                     <ComboBox Style="{DynamicResource ModernComboBox}"
-                              ItemsSource="{Binding ItemList}"
+                              ItemsSource="{Binding FilteredItemList}"
                               SelectedItem="{Binding SelectedSearchItem}"
-                              DisplayMemberPath="Description"
-                              IsEditable="True"
-                              IsTextSearchEnabled="True"
                               TextSearch.TextPath="Description"
+                              IsEditable="True"
+                              IsTextSearchEnabled="False"
+                              Text="{Binding ProductSearchText, UpdateSourceTrigger=PropertyChanged}"
+                              IsDropDownOpen="{Binding IsProductDropDownOpen}"
                               StaysOpenOnEdit="True"
-                              Margin="0,0,0,12">
+                              Margin="0,0,0,8">
                         <ComboBox.InputBindings>
                             <KeyBinding Key="Return" Command="{Binding ScanBarcodeCommand}"/>
                         </ComboBox.InputBindings>
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Background="Transparent">
+                                    <Grid.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick" 
+                                                      Command="{Binding DataContext.ScanBarcodeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                                    </Grid.InputBindings>
+                                    <TextBlock Text="{Binding Description}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
                     </ComboBox>
 
                     <!-- Barcode Input -->
@@ -306,7 +342,7 @@
                             </TextBox.InputBindings>
                         </TextBox>
                         <Button Grid.Column="1" Content="🔍 Add" Style="{DynamicResource PrimaryButton}"
-                                Command="{Binding ScanBarcodeCommand}" Padding="24,12"/>
+                                Command="{Binding ScanBarcodeCommand}" Padding="16,8"/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -315,20 +351,20 @@
             <Border Style="{DynamicResource CardBorder}" Padding="0">
                 <DockPanel>
                     <!-- Cart Header -->
-                    <Grid DockPanel.Dock="Top" Margin="16,16,16,12">
+                    <Grid DockPanel.Dock="Top" Margin="12,10,12,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="🛒 Shopping Cart" FontSize="16" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="0" Text="🛒 Shopping Cart" FontSize="15" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                             <Button Content="+" Style="{DynamicResource PrimaryButton}" Padding="12,6"
-                                     Command="{Binding IncreaseQuantityCommand}" Margin="0,0,4,0" FontSize="14" MinWidth="40"/>
-                             <Button Content="-" Style="{DynamicResource AccentButton}" Padding="12,6"
-                                     Command="{Binding DecreaseQuantityCommand}" Margin="0,0,4,0" FontSize="14" MinWidth="40"/>
-                             <Button Content="Remove" Style="{DynamicResource DangerButton}" Padding="12,6"
-                                     Command="{Binding RemoveFromCartCommand}" FontSize="12"/>
+                             <Button Content="+" Style="{DynamicResource PrimaryButton}" Padding="10,4"
+                                     Command="{Binding IncreaseQuantityCommand}" Margin="0,0,4,0" FontSize="12" MinWidth="32"/>
+                             <Button Content="-" Style="{DynamicResource AccentButton}" Padding="10,4"
+                                     Command="{Binding DecreaseQuantityCommand}" Margin="0,0,4,0" FontSize="12" MinWidth="32"/>
+                             <Button Content="Remove" Style="{DynamicResource DangerButton}" Padding="10,4"
+                                     Command="{Binding RemoveFromCartCommand}" FontSize="11"/>
                         </StackPanel>
                     </Grid>
 
@@ -432,23 +468,28 @@
                              helpers:FocusHelper.DecimalOnly="True"
                              Text="{Binding CashReceivedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
 
+                    <!-- Paid Amount (Credit Sales — only for registered customers) -->
+                    <StackPanel Visibility="{Binding HasSelectedCustomer, Converter={StaticResource BoolToVis}}" Margin="0,0,0,16">
+                        <TextBlock Text="Paid Amount / Udhar (Rs.)" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
+                        <TextBlock Text="Leave empty for full payment. Enter 0 for full credit." FontSize="10" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,6"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" FontSize="18" FontWeight="Bold"
+                                 helpers:FocusHelper.DecimalOnly="True"
+                                 Text="{Binding PaidAmountText, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+
                     <!-- Change -->
                     <Border CornerRadius="12" Padding="20,16" Margin="0,0,0,24">
                         <Border.Style>
                             <Style TargetType="Border">
-                                <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsChangeNegative}" Value="True">
-                                        <Setter Property="Background" Value="#EF4444"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
+                                <Setter Property="Background" Value="{Binding ChangeDisplayBrush}"/>
                             </Style>
                         </Border.Style>
                         <Grid>
-                            <TextBlock Text="CHANGE DUE" FontSize="13" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                            <TextBlock HorizontalAlignment="Right" FontSize="24" FontWeight="Bold" Foreground="White" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ChangeDisplayLabel}" FontSize="13" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock HorizontalAlignment="Right" FontSize="24" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"
+                                       Visibility="{Binding IsChangeAmountVisible, Converter={StaticResource BoolToVis}}">
                                 <TextBlock.Text>
-                                    <Binding Path="ChangeAmount" StringFormat="Rs.{0:N0}"/>
+                                    <Binding Path="ChangeAmountAbs" StringFormat="Rs.{0:N0}"/>
                                 </TextBlock.Text>
                             </TextBlock>
                         </Grid>

@@ -56,6 +56,9 @@ namespace GroceryPOS.ViewModels
             }
         }
 
+        /// <summary>Customer ID to load when navigating to CustomerLedger view.</summary>
+        public int PendingLedgerCustomerId { get; set; }
+
         public ICommand NavigateCommand { get; }
         public ICommand LogoutCommand { get; }
 
@@ -90,18 +93,39 @@ namespace GroceryPOS.ViewModels
             var oldView = _currentView;
             CurrentView = view switch
             {
-                "Dashboard" => _serviceProvider.GetRequiredService<DashboardViewModel>(),
-                "Products"  => _serviceProvider.GetRequiredService<ProductsViewModel>(),
-                "Billing"   => _serviceProvider.GetRequiredService<BillingViewModel>(),
-                "Reports"   => _serviceProvider.GetRequiredService<ReportsViewModel>(),
-                "Backup"    => _serviceProvider.GetRequiredService<BackupViewModel>(),
-                "SupplierBills" => _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
-                "Returns" => _serviceProvider.GetRequiredService<ReturnViewModel>(),
-                "PendingPrints" => _serviceProvider.GetRequiredService<PendingPrintsViewModel>(),
+                "Dashboard"    => _serviceProvider.GetRequiredService<DashboardViewModel>(),
+                "Products"     => _serviceProvider.GetRequiredService<ProductsViewModel>(),
+                "Billing"      => _serviceProvider.GetRequiredService<BillingViewModel>(),
+                "Reports"      => _serviceProvider.GetRequiredService<ReportsViewModel>(),
+                "Backup"       => _serviceProvider.GetRequiredService<BackupViewModel>(),
+                "SupplierBills"=> _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
+                "Returns"      => _serviceProvider.GetRequiredService<ReturnViewModel>(),
+                "PendingPrints"=> _serviceProvider.GetRequiredService<PendingPrintsViewModel>(),
+                "Customers"    => CreateCustomerManagementVM(),
+                "CustomerLedger" => CreateCustomerLedgerVM(PendingLedgerCustomerId),
                 _ => _serviceProvider.GetRequiredService<DashboardViewModel>()
             };
 
             oldView?.Dispose();
+        }
+
+        private CustomerManagementViewModel CreateCustomerManagementVM()
+        {
+            var vm = _serviceProvider.GetRequiredService<CustomerManagementViewModel>();
+            vm.ViewLedgerRequested += customerId =>
+            {
+                PendingLedgerCustomerId = customerId;
+                NavigateTo("CustomerLedger");
+            };
+            return vm;
+        }
+
+        private CustomerLedgerViewModel CreateCustomerLedgerVM(int customerId)
+        {
+            var vm = _serviceProvider.GetRequiredService<CustomerLedgerViewModel>();
+            vm.GoBackRequested += () => NavigateTo("Customers");
+            if (customerId > 0) vm.Load(customerId);
+            return vm;
         }
 
         private void ExecuteLogout()

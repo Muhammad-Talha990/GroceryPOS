@@ -110,13 +110,15 @@ namespace GroceryPOS.Data
                         CREATE TABLE IF NOT EXISTS Customers (
                             CustomerId      INTEGER PRIMARY KEY AUTOINCREMENT,
                             Name            TEXT    NOT NULL,
+                            FullName        TEXT,
                             PrimaryPhone    TEXT    NOT NULL UNIQUE,
                             SecondaryPhone  TEXT,
                             Address         TEXT,
+                            IsActive        INTEGER NOT NULL DEFAULT 1,
                             CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
                         );
 
-                        CREATE INDEX IF NOT EXISTS IX_Customers_Name ON Customers(Name);
+                        CREATE INDEX IF NOT EXISTS IX_Customers_Name     ON Customers(Name);
                         CREATE INDEX IF NOT EXISTS IX_Customers_SecondaryPhone ON Customers(SecondaryPhone);
                     ");
 
@@ -150,6 +152,21 @@ namespace GroceryPOS.Data
                         );
                     ");
 
+                    // ══════════════════════════════════════════
+                    //  TABLE 10: CreditPayments (udhar payment log)
+                    // ══════════════════════════════════════════
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS CreditPayments (
+                            PaymentId       INTEGER PRIMARY KEY AUTOINCREMENT,
+                            BillId          INTEGER NOT NULL,
+                            AmountPaid      REAL    NOT NULL,
+                            PaidAt          TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                            Note            TEXT,
+                            FOREIGN KEY (BillId) REFERENCES Bill(bill_id) ON DELETE CASCADE
+                        );
+                        CREATE INDEX IF NOT EXISTS IX_CreditPayments_BillId ON CreditPayments(BillId);
+                    ");
+
                     // ── Migration: Add StockQuantity and MinStockThreshold if they don't exist ──
                     AddColumnIfNotExists(conn, "Item", "StockQuantity", "REAL NOT NULL DEFAULT 0");
                     AddColumnIfNotExists(conn, "Item", "MinStockThreshold", "REAL NOT NULL DEFAULT 10");
@@ -160,6 +177,23 @@ namespace GroceryPOS.Data
                     // ── Migration: Customer Management (Add column before index) ──
                     AddColumnIfNotExists(conn, "Bill", "CustomerId", "INTEGER");
                     AddColumnIfNotExists(conn, "Customers", "SecondaryPhone", "TEXT");
+
+                    // ── Migration: Credit / Udhar System ──
+                    AddColumnIfNotExists(conn, "Customers", "FullName",  "TEXT");
+                    AddColumnIfNotExists(conn, "Customers", "IsActive",  "INTEGER NOT NULL DEFAULT 1");
+
+                    // Index on IsActive — must be AFTER the column is added
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Customers_IsActive ON Customers(IsActive);");
+
+                    AddColumnIfNotExists(conn, "Bill",      "PaidAmount",      "REAL NOT NULL DEFAULT 0");
+                    AddColumnIfNotExists(conn, "Bill",      "RemainingAmount",  "REAL NOT NULL DEFAULT 0");
+                    AddColumnIfNotExists(conn, "Bill",      "PaymentStatus",    "TEXT NOT NULL DEFAULT 'Paid'");
+
+                    // Backfill FullName from Name for existing customers
+                    Execute(conn, "UPDATE Customers SET FullName = Name WHERE FullName IS NULL OR FullName = '';");
+
+                    // Backfill credit columns on existing bills — they were all fully paid
+                    Execute(conn, "UPDATE Bill SET PaidAmount = GrandTotal, RemainingAmount = 0, PaymentStatus = 'Paid' WHERE PaymentStatus IS NULL OR PaymentStatus = '';");
 
                     // ══════════════════════════════════════════
                     //  INDEXES for query optimization
@@ -177,6 +211,8 @@ namespace GroceryPOS.Data
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Customers_Phone         ON Customers(PrimaryPhone);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_CustPhones_Phone        ON CustomerPhones(PhoneNumber);");
                     Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_CustomerId         ON Bill(CustomerId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_PaymentStatus      ON Bill(PaymentStatus);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_RemainingAmount    ON Bill(RemainingAmount);");
 
                     // ── Migration: Add Status and ReferenceBillId to Bill table ──
                     AddColumnIfNotExists(conn, "Bill", "Status", "TEXT DEFAULT 'Completed'");

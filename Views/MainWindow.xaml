@@ -35,6 +35,12 @@
         <DataTemplate DataType="{x:Type vm:PendingPrintsViewModel}">
             <local:PendingPrintsView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CustomerManagementViewModel}">
+            <local:CustomerManagementView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CustomerLedgerViewModel}">
+            <local:CustomerLedgerView/>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -70,6 +76,7 @@
                 </StackPanel>
 
                 <!-- Navigation Menu -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0,0,0,0">
                     <Button Content="📊  Dashboard" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="Dashboard"/>
@@ -80,6 +87,9 @@
 
                     <Button Content="💳  Billing" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="Billing"/>
+
+                    <Button Content="👥  Customers" Style="{DynamicResource SidebarButton}"
+                            Command="{Binding NavigateCommand}" CommandParameter="Customers"/>
 
                     <Button Content="📈  Reports" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="Reports"
@@ -99,6 +109,7 @@
                     <Button Content="🖨️  Pending Prints" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="PendingPrints"/>
                 </StackPanel>
+                </ScrollViewer>
             </DockPanel>
         </Border>
 

@@ -55,8 +55,8 @@ namespace GroceryPOS.Data.Repositories
             using var billCmd = conn.CreateCommand();
             billCmd.Transaction = txn;
             billCmd.CommandText = @"
-                INSERT INTO Bill (BillDateTime, SubTotal, DiscountAmount, TaxAmount, GrandTotal, CashReceived, ChangeGiven, UserId, Status, ReferenceBillId, Type, ParentBillId, CustomerId, IsPrinted, PrintedAt, PrintAttempts)
-                VALUES (@dt, @sub, @disc, @tax, @grand, @cash, @change, @uid, @status, @refId, @type, @parentId, @cid, @isPrinted, @printedAt, @printAttempts);
+                INSERT INTO Bill (BillDateTime, SubTotal, DiscountAmount, TaxAmount, GrandTotal, CashReceived, ChangeGiven, UserId, Status, ReferenceBillId, Type, ParentBillId, CustomerId, IsPrinted, PrintedAt, PrintAttempts, PaidAmount, RemainingAmount, PaymentStatus)
+                VALUES (@dt, @sub, @disc, @tax, @grand, @cash, @change, @uid, @status, @refId, @type, @parentId, @cid, @isPrinted, @printedAt, @printAttempts, @paid, @remaining, @payStatus);
                 SELECT last_insert_rowid();
             ";
             billCmd.Parameters.AddWithValue("@dt", bill.BillDateTime.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -75,6 +75,9 @@ namespace GroceryPOS.Data.Repositories
             billCmd.Parameters.AddWithValue("@isPrinted", bill.IsPrinted ? 1 : 0);
             billCmd.Parameters.AddWithValue("@printedAt", bill.PrintedAt.HasValue ? (object)bill.PrintedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : DBNull.Value);
             billCmd.Parameters.AddWithValue("@printAttempts", bill.PrintAttempts);
+            billCmd.Parameters.AddWithValue("@paid",      bill.PaidAmount);
+            billCmd.Parameters.AddWithValue("@remaining", bill.RemainingAmount);
+            billCmd.Parameters.AddWithValue("@payStatus", bill.PaymentStatus ?? "Paid");
 
             bill.BillId = Convert.ToInt32(billCmd.ExecuteScalar());
 
@@ -423,7 +426,10 @@ namespace GroceryPOS.Data.Repositories
                 CustomerId     = reader.IsDBNull(reader.GetOrdinal("CustomerId")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("CustomerId")),
                 IsPrinted      = reader.GetInt32(reader.GetOrdinal("IsPrinted")) != 0,
                 PrintedAt      = reader.IsDBNull(reader.GetOrdinal("PrintedAt")) ? null : (DateTime?)DateTime.Parse(reader.GetString(reader.GetOrdinal("PrintedAt"))),
-                PrintAttempts  = reader.GetInt32(reader.GetOrdinal("PrintAttempts"))
+                PrintAttempts  = reader.GetInt32(reader.GetOrdinal("PrintAttempts")),
+                PaidAmount      = reader.HasColumn("PaidAmount")      && !reader.IsDBNull(reader.GetOrdinal("PaidAmount"))      ? reader.GetDouble(reader.GetOrdinal("PaidAmount"))      : 0,
+                RemainingAmount = reader.HasColumn("RemainingAmount") && !reader.IsDBNull(reader.GetOrdinal("RemainingAmount")) ? reader.GetDouble(reader.GetOrdinal("RemainingAmount")) : 0,
+                PaymentStatus   = reader.HasColumn("PaymentStatus")   && !reader.IsDBNull(reader.GetOrdinal("PaymentStatus"))   ? reader.GetString(reader.GetOrdinal("PaymentStatus"))   : "Paid"
             };
 
             if (bill.CustomerId.HasValue && reader.HasColumn("CustomerName") && !reader.IsDBNull(reader.GetOrdinal("CustomerName")))
@@ -489,6 +495,69 @@ namespace GroceryPOS.Data.Repositories
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
                 bills.Add(MapBill(reader));
+
+            return bills;
+        }
+
+        // ────────────────────────────────────────────
+        //  CREDIT / UDHAR read operations
+        // ────────────────────────────────────────────
+
+        /// <summary>Returns all credit bills (RemainingAmount > 0) for a customer, newest first.</summary>
+        public List<Bill> GetCreditBillsByCustomer(int customerId)
+        {
+            var bills = new List<Bill>();
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd  = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                FROM Bill b
+                LEFT JOIN User u ON b.UserId = u.Id
+                LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                WHERE b.CustomerId = @cid
+                  AND b.RemainingAmount > 0
+                  AND b.Type = 'Sale'
+                  AND b.Status != 'Cancelled'
+                ORDER BY b.BillDateTime DESC;";
+            cmd.Parameters.AddWithValue("@cid", customerId);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var bill = MapBill(reader);
+                bills.Add(bill);
+            }
+            foreach (var bill in bills)
+                bill.Items = GetBillItems(conn, bill.BillId);
+
+            return bills;
+        }
+
+        /// <summary>
+        /// Returns all bills for a customer for the ledger view (all statuses, Sale type only).
+        /// </summary>
+        public List<Bill> GetLedgerByCustomer(int customerId)
+        {
+            var bills = new List<Bill>();
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd  = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                FROM Bill b
+                LEFT JOIN User u ON b.UserId = u.Id
+                LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                WHERE b.CustomerId = @cid AND b.Type = 'Sale'
+                ORDER BY b.BillDateTime DESC;";
+            cmd.Parameters.AddWithValue("@cid", customerId);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                bills.Add(MapBill(reader));
+
+            foreach (var bill in bills)
+                bill.Items = GetBillItems(conn, bill.BillId);
 
             return bills;
         }

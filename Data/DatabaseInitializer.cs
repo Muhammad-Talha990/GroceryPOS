@@ -153,7 +153,7 @@ namespace GroceryPOS.Data
                     ");
 
                     // ══════════════════════════════════════════
-                    //  TABLE 10: CreditPayments (udhar payment log)
+                    //  TABLE 10: CreditPayments (store credit payment log)
                     // ══════════════════════════════════════════
                     Execute(conn, @"
                         CREATE TABLE IF NOT EXISTS CreditPayments (
@@ -178,7 +178,7 @@ namespace GroceryPOS.Data
                     AddColumnIfNotExists(conn, "Bill", "CustomerId", "INTEGER");
                     AddColumnIfNotExists(conn, "Customers", "SecondaryPhone", "TEXT");
 
-                    // ── Migration: Credit / Udhar System ──
+                    // ── Migration: Store Credit System ──
                     AddColumnIfNotExists(conn, "Customers", "FullName",  "TEXT");
                     AddColumnIfNotExists(conn, "Customers", "IsActive",  "INTEGER NOT NULL DEFAULT 1");
 

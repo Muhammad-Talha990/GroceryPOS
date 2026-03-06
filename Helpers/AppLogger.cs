@@ -10,7 +10,9 @@ namespace GroceryPOS.Helpers
 
         static AppLogger()
         {
-            LogDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            LogDirectory = Path.Combine(appData, "GroceryPOS", "logs");
+            
             if (!Directory.Exists(LogDirectory))
                 Directory.CreateDirectory(LogDirectory);
         }

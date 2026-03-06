@@ -7,7 +7,7 @@ using GroceryPOS.Models;
 namespace GroceryPOS.Services
 {
     /// <summary>
-    /// Business logic for the Credit / Udhar system.
+    /// Business logic for the Store Credit system.
     /// Handles ledger queries, payment recording, and validation.
     /// </summary>
     public class CreditService

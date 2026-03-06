@@ -61,7 +61,7 @@ namespace GroceryPOS.ViewModels
         public bool HasSelectedCustomer => SelectedCustomer != null;
         public bool IsWalkIn => SelectedCustomer == null;
 
-        // ── Credit / Udhar ──
+        // ── Store Credit ──
         private double _pendingCreditAmount;
         public double PendingCreditAmount
         {
@@ -181,6 +181,7 @@ namespace GroceryPOS.ViewModels
         public ICommand ToggleRegistrationCommand { get; }
         public ICommand SaveNewCustomerCommand { get; }
         public ICommand NavigateSearchCommand { get; }
+        public ICommand NavigateProductSearchCommand { get; }
 
         public BillingViewModel(AuthService authService, ItemService itemService, BillService billService, PrintService printService, IStockService stockService, CustomerService customerService, BillRepository billRepo)
         {
@@ -206,6 +207,7 @@ namespace GroceryPOS.ViewModels
             ToggleRegistrationCommand = new RelayCommand(() => { IsRegistrationVisible = !IsRegistrationVisible; ClearRegistrationForm(); OnPropertyChanged(nameof(IsRegistrationVisible)); });
             SaveNewCustomerCommand = new RelayCommand(_ => SaveNewCustomer());
             NavigateSearchCommand = new RelayCommand(p => NavigateSearchResults(p?.ToString()));
+            NavigateProductSearchCommand = new RelayCommand(p => NavigateProductResults(p?.ToString()));
             LoadProducts();
         }
 
@@ -384,6 +386,28 @@ namespace GroceryPOS.ViewModels
             if (nextIndex >= 0 && nextIndex < CustomerSearchResults.Count)
             {
                 SelectedSearchResult = CustomerSearchResults[nextIndex];
+            }
+        }
+
+        private void NavigateProductResults(string? direction)
+        {
+            if (FilteredItemList == null || FilteredItemList.Count == 0) return;
+
+            int currentIndex = SelectedSearchItem != null ? FilteredItemList.IndexOf(SelectedSearchItem) : -1;
+            int nextIndex = currentIndex;
+
+            if (direction == "Down")
+            {
+                nextIndex = (currentIndex + 1) % FilteredItemList.Count;
+            }
+            else if (direction == "Up")
+            {
+                nextIndex = currentIndex <= 0 ? FilteredItemList.Count - 1 : currentIndex - 1;
+            }
+
+            if (nextIndex >= 0 && nextIndex < FilteredItemList.Count)
+            {
+                SelectedSearchItem = FilteredItemList[nextIndex];
             }
         }
 

@@ -136,7 +136,7 @@ namespace GroceryPOS.Data.Repositories
             }
 
             if (bill != null)
-                bill.Items = GetBillItems(conn, bill.BillId);
+                LoadLineItems(conn, new List<Bill> { bill });
 
             return bill;
         }
@@ -162,9 +162,8 @@ namespace GroceryPOS.Data.Repositories
                 bills.Add(bill);
             }
 
-            // Load items for each bill
-            foreach (var bill in bills)
-                bill.Items = GetBillItems(conn, bill.BillId);
+            // Load items for each bill in a single batch
+            LoadLineItems(conn, bills);
 
             return bills;
         }
@@ -191,8 +190,8 @@ namespace GroceryPOS.Data.Repositories
             while (reader.Read())
                 bills.Add(MapBill(reader));
 
-            foreach (var bill in bills)
-                bill.Items = GetBillItems(conn, bill.BillId);
+            // Load items for each bill in a single batch
+            LoadLineItems(conn, bills);
 
             return bills;
         }
@@ -285,8 +284,8 @@ namespace GroceryPOS.Data.Repositories
                 bills.Add(bill);
             }
 
-            foreach (var bill in bills)
-                bill.Items = GetBillItems(conn, bill.BillId);
+            // Load items for each bill in a single batch
+            LoadLineItems(conn, bills);
 
             return bills;
         }
@@ -315,9 +314,8 @@ namespace GroceryPOS.Data.Repositories
                 }
             }
 
-            // Load items for each bill (doing this in a loop for simplicity, though could be optimized)
-            foreach (var bill in bills)
-                bill.Items = GetBillItems(conn, bill.BillId);
+            // Load items for each bill in one batch
+            LoadLineItems(conn, bills);
 
             return bills;
         }
@@ -344,7 +342,7 @@ namespace GroceryPOS.Data.Repositories
             }
 
             if (bill != null)
-                bill.Items = GetBillItems(conn, bill.BillId);
+                LoadLineItems(conn, new List<Bill> { bill });
 
             return bill;
         }
@@ -400,6 +398,44 @@ namespace GroceryPOS.Data.Repositories
             }
 
             return items;
+        }
+
+        /// <summary>
+        /// Batched load of line items for a list of bills to avoid N+1 query performance issues.
+        /// </summary>
+        private void LoadLineItems(SqliteConnection conn, List<Bill> bills)
+        {
+            if (bills == null || !bills.Any()) return;
+
+            var billDict = bills.ToDictionary(b => b.BillId);
+            var billIds = string.Join(",", billDict.Keys);
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT bd.*, COALESCE(i.Description, 'Unknown Item') AS ItemDesc
+                FROM BillDescription bd
+                LEFT JOIN Item i ON bd.ItemId = i.itemId
+                WHERE bd.Bill_id IN ({billIds});
+            ";
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var billId = reader.GetInt32(reader.GetOrdinal("Bill_id"));
+                if (billDict.TryGetValue(billId, out var bill))
+                {
+                    bill.Items.Add(new BillDescription
+                    {
+                        Id              = reader.GetInt32(reader.GetOrdinal("id")),
+                        BillId          = billId,
+                        ItemId          = reader.GetString(reader.GetOrdinal("ItemId")),
+                        Quantity        = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("Quantity"))),
+                        UnitPrice       = reader.GetDouble(reader.GetOrdinal("UnitPrice")),
+                        TotalPrice      = reader.GetDouble(reader.GetOrdinal("TotalPrice")),
+                        ItemDescription = reader.GetString(reader.GetOrdinal("ItemDesc"))
+                    });
+                }
+            }
         }
 
         // ────────────────────────────────────────────
@@ -496,6 +532,9 @@ namespace GroceryPOS.Data.Repositories
             while (reader.Read())
                 bills.Add(MapBill(reader));
 
+            // Load items for each bill in a single batch
+            LoadLineItems(conn, bills);
+
             return bills;
         }
 
@@ -528,8 +567,7 @@ namespace GroceryPOS.Data.Repositories
                 var bill = MapBill(reader);
                 bills.Add(bill);
             }
-            foreach (var bill in bills)
-                bill.Items = GetBillItems(conn, bill.BillId);
+            LoadLineItems(conn, bills);
 
             return bills;
         }
@@ -556,8 +594,7 @@ namespace GroceryPOS.Data.Repositories
             while (reader.Read())
                 bills.Add(MapBill(reader));
 
-            foreach (var bill in bills)
-                bill.Items = GetBillItems(conn, bill.BillId);
+            LoadLineItems(conn, bills);
 
             return bills;
         }

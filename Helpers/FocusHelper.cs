@@ -336,5 +336,61 @@ namespace GroceryPOS.Helpers
                 }));
             }
         }
+        // --- FixComboBoxSearch Attached Property ---
+        public static readonly DependencyProperty FixComboBoxSearchProperty =
+            DependencyProperty.RegisterAttached(
+                "FixComboBoxSearch",
+                typeof(bool),
+                typeof(FocusHelper),
+                new PropertyMetadata(false, OnFixComboBoxSearchChanged));
+
+        public static bool GetFixComboBoxSearch(DependencyObject obj) => (bool)obj.GetValue(FixComboBoxSearchProperty);
+        public static void SetFixComboBoxSearch(DependencyObject obj, bool value) => obj.SetValue(FixComboBoxSearchProperty, value);
+
+        private static void OnFixComboBoxSearchChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is ComboBox comboBox)
+            {
+                if ((bool)e.NewValue)
+                {
+                    comboBox.Loaded += ComboBox_Fix_Loaded;
+                }
+                else
+                {
+                    comboBox.Loaded -= ComboBox_Fix_Loaded;
+                }
+            }
+        }
+
+        private static void ComboBox_Fix_Loaded(object sender, RoutedEventArgs e)
+        {
+            if (sender is ComboBox comboBox)
+            {
+                var textBox = comboBox.Template.FindName("PART_EditableTextBox", comboBox) as TextBox;
+                if (textBox != null)
+                {
+                    textBox.GotFocus += (s, ev) => 
+                    {
+                        // Prevent "SelectAll" on focus for search boxes
+                        textBox.Dispatcher.BeginInvoke(new System.Action(() => 
+                        {
+                            if (textBox.SelectionLength > 0)
+                                textBox.SelectionLength = 0;
+                        }), System.Windows.Threading.DispatcherPriority.Loaded);
+                    };
+
+                    textBox.TextChanged += (s, ev) =>
+                    {
+                        // When text changes via typing, ensure we don't accidentally select the newly typed text
+                        // which often happens in editable ComboBoxes when filtering.
+                        if (textBox.SelectionLength > 0 && textBox.IsFocused)
+                        {
+                             textBox.SelectionLength = 0;
+                             textBox.CaretIndex = textBox.Text.Length;
+                        }
+                    };
+                }
+            }
+        }
     }
 }

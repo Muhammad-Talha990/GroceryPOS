@@ -16,7 +16,12 @@ namespace GroceryPOS.Data
 
         static DatabaseHelper()
         {
-            var appFolder = AppDomain.CurrentDomain.BaseDirectory;
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var appFolder = Path.Combine(appData, "GroceryPOS");
+            
+            if (!Directory.Exists(appFolder))
+                Directory.CreateDirectory(appFolder);
+
             DbPath = Path.Combine(appFolder, "GroceryPOS.db");
             ConnectionString = $"Data Source={DbPath}";
         }
@@ -61,6 +66,26 @@ namespace GroceryPOS.Data
             cmd.ExecuteNonQuery();
 
             return connection;
+        }
+
+        /// <summary>
+        /// Performs database maintenance (Vacuum).
+        /// Should be called during off-peak times or on application exit.
+        /// </summary>
+        public static void MaintainDatabase()
+        {
+            try
+            {
+                using var conn = GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "VACUUM;";
+                cmd.ExecuteNonQuery();
+                AppLogger.Info("Database maintenance (VACUUM) completed successfully.");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Database maintenance failed", ex);
+            }
         }
 
         /// <summary>

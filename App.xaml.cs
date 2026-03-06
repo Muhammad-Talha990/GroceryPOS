@@ -26,8 +26,7 @@ public partial class App : Application
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
-        // Auto-select all text in TextBox on focus
-        EventManager.RegisterClassHandler(typeof(TextBox), UIElement.GotFocusEvent, new RoutedEventHandler(TextBox_GotFocus));
+        // Auto-select text via preview mouseDown for standard experience
         EventManager.RegisterClassHandler(typeof(TextBox), UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler(TextBox_PreviewMouseDown));
 
         try
@@ -132,26 +131,34 @@ public partial class App : Application
     private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
         AppLogger.Error("UI Thread Exception", e.Exception);
-        MessageBox.Show($"An unexpected error occurred:\n{e.Exception.Message}",
-            "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        ShowErrorDialog("An unexpected error occurred in the application interface.", e.Exception);
         e.Handled = true;
     }
 
     private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
-        var ex = e.ExceptionObject as Exception;
-        AppLogger.Error($"CRITICAL UNHANDLED EXCEPTION (IsTerminating: {e.IsTerminating})", ex);
-        MessageBox.Show($"A critical error occurred and the application must close.\nError: {ex?.Message}",
-            "Critical Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        if (e.ExceptionObject is Exception ex)
+        {
+            AppLogger.Error("Non-UI Thread Exception", ex);
+            System.Windows.Application.Current.Dispatcher.Invoke(() => {
+                ShowErrorDialog("A critical system error occurred.", ex);
+            });
+        }
+    }
+
+    private void ShowErrorDialog(string userMessage, Exception ex)
+    {
+        var detail = ex.Message;
+        if (ex.InnerException != null) detail += $"\nInner Error: {ex.InnerException.Message}";
+
+        MessageBox.Show(
+            $"{userMessage}\n\nTechnical Details:\n{detail}\n\nThe error has been logged for review.",
+            "System Error",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
     }
 
     // --- Select-all-on-focus helpers ---
-    private static void TextBox_GotFocus(object sender, RoutedEventArgs e)
-    {
-        if (sender is TextBox tb)
-            tb.SelectAll();
-    }
-
     private static void TextBox_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is TextBox tb && !tb.IsKeyboardFocusWithin)

@@ -74,7 +74,7 @@ namespace GroceryPOS.Models
         /// <summary>Number of failed or successful print attempts.</summary>
         public int PrintAttempts { get; set; }
 
-        // --- Credit / Udhar Tracking ---
+        // --- Credit Tracking ---
         /// <summary>Amount actually paid at time of sale (may be less than GrandTotal for credit).</summary>
         public double PaidAmount { get; set; }
 

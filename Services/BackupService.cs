@@ -12,8 +12,12 @@ namespace GroceryPOS.Services
 
         public BackupService()
         {
-            _dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "GroceryPOS.db");
-            _backupDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Backups");
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var appFolder = Path.Combine(appData, "GroceryPOS");
+            
+            _dbPath = Path.Combine(appFolder, "GroceryPOS.db");
+            _backupDirectory = Path.Combine(appFolder, "Backups");
+            
             if (!Directory.Exists(_backupDirectory))
                 Directory.CreateDirectory(_backupDirectory);
         }

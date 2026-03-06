@@ -286,7 +286,7 @@
                         <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#DC2626">
                             <Run Text="This customer has Rs."/>
                             <Run Text="{Binding PendingCreditAmount, StringFormat='{}{0:N0}', Mode=OneWay}" FontWeight="Bold"/>
-                            <Run Text="pending credit (Udhar)."/>
+                            <Run Text="pending credit."/>
                         </TextBlock>
                         <TextBlock Text="Collect previous dues before extending more credit." FontSize="11" Foreground="#991B1B" Opacity="0.8" Margin="0,2,0,0"/>
                     </StackPanel>
@@ -307,9 +307,12 @@
                               Text="{Binding ProductSearchText, UpdateSourceTrigger=PropertyChanged}"
                               IsDropDownOpen="{Binding IsProductDropDownOpen}"
                               StaysOpenOnEdit="True"
+                              helpers:FocusHelper.FixComboBoxSearch="True"
                               Margin="0,0,0,8">
                         <ComboBox.InputBindings>
                             <KeyBinding Key="Return" Command="{Binding ScanBarcodeCommand}"/>
+                            <KeyBinding Key="Down" Command="{Binding NavigateProductSearchCommand}" CommandParameter="Down"/>
+                            <KeyBinding Key="Up" Command="{Binding NavigateProductSearchCommand}" CommandParameter="Up"/>
                         </ComboBox.InputBindings>
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
@@ -335,6 +338,7 @@
                                  Text="{Binding BarcodeInput, UpdateSourceTrigger=PropertyChanged}"
                                  FontSize="18" Margin="0,0,10,0"
                                  helpers:FocusHelper.NumericOnly="True"
+                                 helpers:FocusHelper.SelectAllOnFocus="True"
                                  x:Name="BarcodeTextBox" Tag="Barcode">
                             <TextBox.InputBindings>
                                 <KeyBinding Key="Return" Command="{Binding ScanBarcodeCommand}"/>
@@ -436,6 +440,7 @@
                             <TextBlock Text="Discount (Rs.)" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,6"/>
                             <TextBox Style="{DynamicResource ModernTextBox}"
                                      helpers:FocusHelper.DecimalOnly="True"
+                                     helpers:FocusHelper.SelectAllOnFocus="True"
                                      Text="{Binding DiscountText, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
 
@@ -443,6 +448,7 @@
                             <TextBlock Text="Tax (Rs.)" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,6"/>
                             <TextBox Style="{DynamicResource ModernTextBox}"
                                      helpers:FocusHelper.DecimalOnly="True"
+                                     helpers:FocusHelper.SelectAllOnFocus="True"
                                      Text="{Binding TaxText, UpdateSourceTrigger=PropertyChanged}"/>
                         </StackPanel>
                     </Grid>
@@ -466,14 +472,16 @@
                     <TextBlock Text="Cash Received (Rs.)" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"/>
                     <TextBox Style="{DynamicResource ModernTextBox}" FontSize="18" FontWeight="Bold"
                              helpers:FocusHelper.DecimalOnly="True"
+                             helpers:FocusHelper.SelectAllOnFocus="True"
                              Text="{Binding CashReceivedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"/>
 
                     <!-- Paid Amount (Credit Sales — only for registered customers) -->
                     <StackPanel Visibility="{Binding HasSelectedCustomer, Converter={StaticResource BoolToVis}}" Margin="0,0,0,16">
-                        <TextBlock Text="Paid Amount / Udhar (Rs.)" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
+                        <TextBlock Text="Paid Amount / Credit (Rs.)" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
                         <TextBlock Text="Leave empty for full payment. Enter 0 for full credit." FontSize="10" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,6"/>
                         <TextBox Style="{DynamicResource ModernTextBox}" FontSize="18" FontWeight="Bold"
                                  helpers:FocusHelper.DecimalOnly="True"
+                                 helpers:FocusHelper.SelectAllOnFocus="True"
                                  Text="{Binding PaidAmountText, UpdateSourceTrigger=PropertyChanged}"/>
                     </StackPanel>
 

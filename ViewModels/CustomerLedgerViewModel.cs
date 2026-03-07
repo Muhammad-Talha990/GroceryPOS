@@ -17,6 +17,8 @@ namespace GroceryPOS.ViewModels
     {
         private readonly CreditService _creditService;
         private readonly CustomerService _customerService;
+        private readonly PrintService _printService;
+        private readonly AuthService _authService;
 
         // ── Selected customer ──
         private Customer? _customer;
@@ -76,6 +78,14 @@ namespace GroceryPOS.ViewModels
         public bool HasSelectedBill => SelectedBill != null;
         public double SelectedBillRemaining => SelectedBill?.RemainingAmount ?? 0;
 
+
+        private bool _isBillDetailOpen;
+        public bool IsBillDetailOpen
+        {
+            get => _isBillDetailOpen;
+            set => SetProperty(ref _isBillDetailOpen, value);
+        }
+
         public ObservableCollection<CreditPayment> PaymentHistory { get; } = new();
 
         private void LoadPaymentHistory()
@@ -87,7 +97,9 @@ namespace GroceryPOS.ViewModels
             {
                 var history = _creditService.GetPaymentHistory(SelectedBill.BillId);
                 foreach (var p in history)
+                {
                     PaymentHistory.Add(p);
+                }
             }
             catch (Exception ex)
             {
@@ -129,21 +141,31 @@ namespace GroceryPOS.ViewModels
         public ICommand ClosePaymentPanelCommand { get; }
         public ICommand RecordPaymentCommand { get; }
         public ICommand PayFullRemainingCommand { get; }
+        public ICommand ViewBillCommand { get; }
+        public ICommand PrintBillCommand { get; }
+        public ICommand CloseBillDetailCommand { get; }
+        public ICommand CloseSidebarCommand { get; }
 
         /// <summary>Raised when the user wants to go back to Customer Management.</summary>
         public event Action? GoBackRequested;
         public ICommand GoBackCommand { get; }
 
-        public CustomerLedgerViewModel(CreditService creditService, CustomerService customerService)
+        public CustomerLedgerViewModel(CreditService creditService, CustomerService customerService, PrintService printService, AuthService authService)
         {
             _creditService  = creditService;
             _customerService = customerService;
+            _printService = printService;
+            _authService = authService;
 
             RefreshCommand          = new RelayCommand(_ => Refresh());
             OpenPaymentPanelCommand = new RelayCommand(obj => OpenPaymentPanel(obj as Bill));
             ClosePaymentPanelCommand= new RelayCommand(_ => ClosePaymentPanel());
             RecordPaymentCommand    = new RelayCommand(_ => RecordPayment());
             PayFullRemainingCommand = new RelayCommand(_ => PayFullRemaining());
+            ViewBillCommand         = new RelayCommand(obj => ViewBill(obj as Bill));
+            PrintBillCommand        = new RelayCommand(obj => PrintBill(obj as Bill));
+            CloseBillDetailCommand  = new RelayCommand(_ => CloseBillDetail());
+            CloseSidebarCommand     = new RelayCommand(_ => CloseSidebar());
             GoBackCommand           = new RelayCommand(_ => GoBackRequested?.Invoke());
         }
 
@@ -261,6 +283,28 @@ namespace GroceryPOS.ViewModels
                 PaymentError = ex.Message;
                 AppLogger.Error("CustomerLedgerViewModel.RecordPayment failed", ex);
             }
+        }
+        private void ViewBill(Bill? bill)
+        {
+            if (bill == null) return;
+            SelectedBill = bill;
+            IsBillDetailOpen = true;
+        }
+
+        private void PrintBill(Bill? bill)
+        {
+            if (bill == null) return;
+            _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
+        }
+
+        private void CloseBillDetail()
+        {
+            IsBillDetailOpen = false;
+        }
+
+        private void CloseSidebar()
+        {
+            SelectedBill = null;
         }
     }
 }

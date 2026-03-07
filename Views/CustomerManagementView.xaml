@@ -216,8 +216,20 @@
                              Padding="10,8" Margin="0,0,0,12"
                              BorderBrush="#334155" BorderThickness="1" CaretBrush="White"/>
 
-                    <TextBlock Text="Address (Optional)" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,4"/>
+                    <TextBlock Text="Address 1 (Optional)" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,4"/>
                     <TextBox Text="{Binding EditAddress, UpdateSourceTrigger=PropertyChanged}"
+                             Background="#0F172A" Foreground="White" FontSize="14"
+                             Padding="10,8" Margin="0,0,0,12"
+                             BorderBrush="#334155" BorderThickness="1" CaretBrush="White"/>
+
+                    <TextBlock Text="Address 2 (Optional)" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding EditAddress2, UpdateSourceTrigger=PropertyChanged}"
+                             Background="#0F172A" Foreground="White" FontSize="14"
+                             Padding="10,8" Margin="0,0,0,12"
+                             BorderBrush="#334155" BorderThickness="1" CaretBrush="White"/>
+
+                    <TextBlock Text="Address 3 (Optional)" Foreground="#94A3B8" FontSize="12" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding EditAddress3, UpdateSourceTrigger=PropertyChanged}"
                              Background="#0F172A" Foreground="White" FontSize="14"
                              Padding="10,8" Margin="0,0,0,14"
                              BorderBrush="#334155" BorderThickness="1" CaretBrush="White"/>

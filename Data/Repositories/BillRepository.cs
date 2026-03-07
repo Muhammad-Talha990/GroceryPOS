@@ -55,8 +55,8 @@ namespace GroceryPOS.Data.Repositories
             using var billCmd = conn.CreateCommand();
             billCmd.Transaction = txn;
             billCmd.CommandText = @"
-                INSERT INTO Bill (BillDateTime, SubTotal, DiscountAmount, TaxAmount, GrandTotal, CashReceived, ChangeGiven, UserId, Status, ReferenceBillId, Type, ParentBillId, CustomerId, IsPrinted, PrintedAt, PrintAttempts, PaidAmount, RemainingAmount, PaymentStatus)
-                VALUES (@dt, @sub, @disc, @tax, @grand, @cash, @change, @uid, @status, @refId, @type, @parentId, @cid, @isPrinted, @printedAt, @printAttempts, @paid, @remaining, @payStatus);
+                INSERT INTO Bill (BillDateTime, SubTotal, DiscountAmount, TaxAmount, GrandTotal, CashReceived, ChangeGiven, UserId, Status, ReferenceBillId, Type, ParentBillId, CustomerId, IsPrinted, PrintedAt, PrintAttempts, PaidAmount, RemainingAmount, PaymentStatus, BillingAddress)
+                VALUES (@dt, @sub, @disc, @tax, @grand, @cash, @change, @uid, @status, @refId, @type, @parentId, @cid, @isPrinted, @printedAt, @printAttempts, @paid, @remaining, @payStatus, @billingAddr);
                 SELECT last_insert_rowid();
             ";
             billCmd.Parameters.AddWithValue("@dt", bill.BillDateTime.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -78,6 +78,7 @@ namespace GroceryPOS.Data.Repositories
             billCmd.Parameters.AddWithValue("@paid",      bill.PaidAmount);
             billCmd.Parameters.AddWithValue("@remaining", bill.RemainingAmount);
             billCmd.Parameters.AddWithValue("@payStatus", bill.PaymentStatus ?? "Paid");
+            billCmd.Parameters.AddWithValue("@billingAddr", (object)bill.BillingAddress ?? DBNull.Value);
 
             bill.BillId = Convert.ToInt32(billCmd.ExecuteScalar());
 
@@ -121,7 +122,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt, 
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -149,7 +152,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -218,6 +223,39 @@ namespace GroceryPOS.Data.Repositories
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
+        /// <summary>Gets today's total remaining due amount (credit/udhar).</summary>
+        public double GetTodayTotalRemaining()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(RemainingAmount), 0) FROM Bill 
+                WHERE BillDateTime >= @from AND BillDateTime < @to AND Status != 'Cancelled';
+            ";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets today's total paid amount (subtracts returned grand totals).</summary>
+        public double GetTodayTotalPaid()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(
+                    CASE 
+                        WHEN Type = 'Return' THEN GrandTotal 
+                        ELSE PaidAmount 
+                    END
+                ), 0) FROM Bill 
+                WHERE BillDateTime >= @from AND BillDateTime < @to AND Status != 'Cancelled';
+            ";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
         /// <summary>Gets today's bill count.</summary>
         public int GetTodayCount()
         {
@@ -269,7 +307,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -297,7 +337,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -326,7 +368,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -465,7 +509,8 @@ namespace GroceryPOS.Data.Repositories
                 PrintAttempts  = reader.GetInt32(reader.GetOrdinal("PrintAttempts")),
                 PaidAmount      = reader.HasColumn("PaidAmount")      && !reader.IsDBNull(reader.GetOrdinal("PaidAmount"))      ? reader.GetDouble(reader.GetOrdinal("PaidAmount"))      : 0,
                 RemainingAmount = reader.HasColumn("RemainingAmount") && !reader.IsDBNull(reader.GetOrdinal("RemainingAmount")) ? reader.GetDouble(reader.GetOrdinal("RemainingAmount")) : 0,
-                PaymentStatus   = reader.HasColumn("PaymentStatus")   && !reader.IsDBNull(reader.GetOrdinal("PaymentStatus"))   ? reader.GetString(reader.GetOrdinal("PaymentStatus"))   : "Paid"
+                PaymentStatus   = reader.HasColumn("PaymentStatus")   && !reader.IsDBNull(reader.GetOrdinal("PaymentStatus"))   ? reader.GetString(reader.GetOrdinal("PaymentStatus"))   : "Paid",
+                BillingAddress  = reader.HasColumn("BillingAddress")  && !reader.IsDBNull(reader.GetOrdinal("BillingAddress"))  ? reader.GetString(reader.GetOrdinal("BillingAddress"))  : null
             };
 
             if (bill.CustomerId.HasValue && reader.HasColumn("CustomerName") && !reader.IsDBNull(reader.GetOrdinal("CustomerName")))
@@ -476,6 +521,8 @@ namespace GroceryPOS.Data.Repositories
                     Name = reader.GetString(reader.GetOrdinal("CustomerName")),
                     PrimaryPhone = reader.HasColumn("PrimaryPhone") ? reader.GetString(reader.GetOrdinal("PrimaryPhone")) : string.Empty,
                     Address = reader.HasColumn("CustomerAddress") && !reader.IsDBNull(reader.GetOrdinal("CustomerAddress")) ? reader.GetString(reader.GetOrdinal("CustomerAddress")) : null,
+                    Address2 = reader.HasColumn("CustomerAddress2") && !reader.IsDBNull(reader.GetOrdinal("CustomerAddress2")) ? reader.GetString(reader.GetOrdinal("CustomerAddress2")) : null,
+                    Address3 = reader.HasColumn("CustomerAddress3") && !reader.IsDBNull(reader.GetOrdinal("CustomerAddress3")) ? reader.GetString(reader.GetOrdinal("CustomerAddress3")) : null,
                     CreatedAt = reader.HasColumn("CustomerJoinDate") && DateTime.TryParse(reader.GetString(reader.GetOrdinal("CustomerJoinDate")), out var joinDt) ? joinDt : DateTime.Now
                 };
             }
@@ -521,7 +568,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -550,7 +599,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd  = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
@@ -582,7 +633,9 @@ namespace GroceryPOS.Data.Repositories
             using var cmd  = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
+                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
+                       c.CreatedAt as CustomerJoinDate
                 FROM Bill b
                 LEFT JOIN User u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId

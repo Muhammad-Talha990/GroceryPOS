@@ -48,6 +48,13 @@ namespace GroceryPOS.ViewModels
             LoginCommand = new RelayCommand(ExecuteLogin, () => !IsLoggingIn);
         }
 
+        public void Reset()
+        {
+            Username = string.Empty;
+            Password = string.Empty;
+            ErrorMessage = string.Empty;
+        }
+
         private void ExecuteLogin()
         {
             try

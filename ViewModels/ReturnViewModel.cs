@@ -203,7 +203,7 @@ namespace GroceryPOS.ViewModels
         }
 
 
-        private void ClearForm()
+        public void ClearForm()
         {
             OriginalBill = null;
             Dispatch(() => Items.Clear());

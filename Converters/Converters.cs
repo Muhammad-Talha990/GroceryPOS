@@ -102,6 +102,20 @@ namespace GroceryPOS.Converters
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
     }
 
+    public class NumericToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            double d = 0;
+            if (value is double dv) d = dv;
+            else if (value is int iv) d = iv;
+            else if (value is decimal dcv) d = (double)dcv;
+            
+            return d != 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
     /// <summary>Returns true if value > 0 (for use with DataTrigger).</summary>
     public class GreaterThanZeroConverter : IValueConverter
     {

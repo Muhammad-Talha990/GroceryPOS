@@ -44,7 +44,7 @@ namespace GroceryPOS.Services
         /// Pass less than grandTotal for a credit/udhar sale (registered customers only).
         /// </param>
         public Bill CompleteBill(int? userId, int? customerId, List<BillDescription> items,
-            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1)
+            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1, string? billingAddress = null)
         {
             // ── Validate inputs ──
             if (items == null || items.Count == 0)
@@ -111,7 +111,8 @@ namespace GroceryPOS.Services
                 CustomerId      = customerId,
                 PaidAmount      = paidAmount,
                 RemainingAmount = remainingAmount,
-                PaymentStatus   = paymentStatus
+                PaymentStatus   = paymentStatus,
+                BillingAddress  = billingAddress
             };
 
             // ── Save atomically (bill + items + stock) ──
@@ -137,6 +138,10 @@ namespace GroceryPOS.Services
         public double GetTodayTotal() => _billRepo.GetTodayTotal();
 
         public int GetTodayBillCount() => _billRepo.GetTodayCount();
+        
+        public double GetTodayTotalCredit() => _billRepo.GetTodayTotalRemaining();
+
+        public double GetTodayTotalCash() => _billRepo.GetTodayTotalPaid();
 
         public Bill? GetBillById(int billId) => _billRepo.GetById(billId);
 

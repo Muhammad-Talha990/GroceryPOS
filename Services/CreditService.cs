@@ -15,12 +15,14 @@ namespace GroceryPOS.Services
         private readonly CreditPaymentRepository _creditRepo;
         private readonly BillRepository _billRepo;
         private readonly CustomerRepository _customerRepo;
+        private readonly IStockService _stockService;
 
-        public CreditService(CreditPaymentRepository creditRepo, BillRepository billRepo, CustomerRepository customerRepo)
+        public CreditService(CreditPaymentRepository creditRepo, BillRepository billRepo, CustomerRepository customerRepo, IStockService stockService)
         {
             _creditRepo   = creditRepo;
             _billRepo     = billRepo;
             _customerRepo = customerRepo;
+            _stockService = stockService;
         }
 
         // ────────────────────────────────────────────
@@ -86,7 +88,12 @@ namespace GroceryPOS.Services
                 Note       = note
             };
 
-            return _creditRepo.RecordPayment(payment);
+            _creditRepo.RecordPayment(payment);
+            
+            // Trigger global UI refresh (Dashboard metrics, Reports, etc.)
+            _stockService.NotifyChanged();
+
+            return _billRepo.GetById(billId) ?? throw new InvalidOperationException("Bill lost after payment.");
         }
 
         // ────────────────────────────────────────────

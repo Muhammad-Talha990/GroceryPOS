@@ -101,13 +101,17 @@
 
                         <!-- Name -->
                         <TextBlock Text="📌 Product Name *" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
-                        <TextBox Style="{DynamicResource ModernTextBox}" Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8"/>
+                        <TextBox Style="{DynamicResource ModernTextBox}" 
+                                 Text="{Binding FormName, UpdateSourceTrigger=PropertyChanged}" 
+                                 helpers:FocusHelper.SelectAllOnFocus="True"
+                                 Margin="0,0,0,8"/>
 
                         <!-- Barcode -->
                         <TextBlock Text="🏷️ Barcode" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                         <TextBox Style="{DynamicResource ModernTextBox}" 
                                  Text="{Binding FormBarcode, UpdateSourceTrigger=PropertyChanged}" 
                                  helpers:FocusHelper.NumericOnly="True"
+                                 helpers:FocusHelper.SelectAllOnFocus="True"
                                  Margin="0,0,0,8"/>
 
                         <!-- Category -->
@@ -117,6 +121,7 @@
                                   IsEditable="True"
                                   helpers:FocusHelper.MoveFocusOnEnter="True"
                                   helpers:FocusHelper.LettersOnly="True"
+                                  helpers:FocusHelper.SelectAllOnFocus="True"
                                   Text="{Binding FormCategory, UpdateSourceTrigger=PropertyChanged}"
                                   Margin="0,0,0,8"/>
 
@@ -131,12 +136,14 @@
                                 <TextBlock Text="💰 Cost (Rs.)" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                 <TextBox Style="{DynamicResource ModernTextBox}" 
                                          helpers:FocusHelper.DecimalOnly="True"
+                                         helpers:FocusHelper.SelectAllOnFocus="True"
                                          Text="{Binding FormCostPrice, UpdateSourceTrigger=PropertyChanged}"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="💵 Sale (Rs.)" FontSize="12" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                 <TextBox Style="{DynamicResource ModernTextBox}" 
                                          helpers:FocusHelper.DecimalOnly="True"
+                                         helpers:FocusHelper.SelectAllOnFocus="True"
                                          Text="{Binding FormSalePrice, UpdateSourceTrigger=PropertyChanged}"/>
                             </StackPanel>
                         </Grid>

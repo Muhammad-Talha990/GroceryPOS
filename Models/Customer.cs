@@ -24,6 +24,8 @@ namespace GroceryPOS.Models
         public string PrimaryPhone { get; set; } = string.Empty;
         public string? SecondaryPhone { get; set; }
         public string? Address { get; set; }
+        public string? Address2 { get; set; }
+        public string? Address3 { get; set; }
 
         /// <summary>False = soft-deleted. Only active customers appear in billing search.</summary>
         public bool IsActive { get; set; } = true;

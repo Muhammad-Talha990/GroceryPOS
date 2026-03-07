@@ -180,6 +180,8 @@ namespace GroceryPOS.Data
 
                     // ── Migration: Store Credit System ──
                     AddColumnIfNotExists(conn, "Customers", "FullName",  "TEXT");
+                    AddColumnIfNotExists(conn, "Customers", "Address2",  "TEXT");
+                    AddColumnIfNotExists(conn, "Customers", "Address3",  "TEXT");
                     AddColumnIfNotExists(conn, "Customers", "IsActive",  "INTEGER NOT NULL DEFAULT 1");
 
                     // Index on IsActive — must be AFTER the column is added
@@ -226,6 +228,7 @@ namespace GroceryPOS.Data
                     AddColumnIfNotExists(conn, "Bill", "IsPrinted", "INTEGER DEFAULT 0");
                     AddColumnIfNotExists(conn, "Bill", "PrintedAt", "TEXT");
                     AddColumnIfNotExists(conn, "Bill", "PrintAttempts", "INTEGER DEFAULT 0");
+                    AddColumnIfNotExists(conn, "Bill", "BillingAddress", "TEXT");
 
                     // Sync old status to type if newly added
                     Execute(conn, "UPDATE Bill SET Type = 'Return' WHERE Status = '*** RETURN BILL ***' AND Type = 'Sale';");

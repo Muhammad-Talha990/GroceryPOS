@@ -1,0 +1,170 @@
+<UserControl x:Class="GroceryPOS.Views.Controls.BillReceiptControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:GroceryPOS.Converters"
+             x:Name="ReceiptRoot">
+
+    <UserControl.Resources>
+        <converters:NumericToVisibilityConverter x:Key="NumToVis"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVis"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
+
+    <!-- The entire receipt rendered on a white "paper" background -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="30,20,30,30"
+                  DataContext="{Binding Bill, ElementName=ReceiptRoot}">
+        <StackPanel>
+            <!-- ═══ STORE HEADER ═══ -->
+            <TextBlock Text="GROCERY MART" FontSize="20" FontWeight="Bold" 
+                       HorizontalAlignment="Center" Foreground="#1E293B" FontFamily="Consolas"/>
+            <TextBlock Text="123 Main Street, City Name" FontSize="10" 
+                       HorizontalAlignment="Center" Foreground="#64748B" Margin="0,4" FontFamily="Consolas"/>
+            <TextBlock Text="Ph: 0300-1234567" FontSize="10" 
+                       HorizontalAlignment="Center" Foreground="#64748B" FontFamily="Consolas"/>
+
+            <!-- Divider -->
+            <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                       HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,12"/>
+
+            <!-- ═══ BILL INFO ═══ -->
+            <Grid Margin="0,0,0,4">
+                <StackPanel>
+                    <TextBlock FontSize="11" Foreground="#1E293B" FontFamily="Consolas">
+                        <Run Text="Receipt#: "/><Run Text="{Binding InvoiceNumber, Mode=OneWay}" FontWeight="Bold"/>
+                    </TextBlock>
+                    <!-- Customer only shown for registered customers -->
+                    <TextBlock FontSize="10" Foreground="#334155" FontFamily="Consolas" Margin="0,2,0,0"
+                               Visibility="{Binding Customer.FullName, Converter={StaticResource StringToVis}}">
+                        <Run Text="Cust: "/><Run Text="{Binding Customer.FullName, Mode=OneWay}" FontWeight="SemiBold"/>
+                    </TextBlock>
+                    <TextBlock FontSize="10" Foreground="#64748B" FontFamily="Consolas" TextWrapping="Wrap"
+                               Visibility="{Binding BillingAddress, Converter={StaticResource StringToVis}}">
+                        <Run Text="Addr: "/><Run Text="{Binding BillingAddress, Mode=OneWay}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="10" Foreground="#334155" FontFamily="Consolas" Margin="0,2,0,0">
+                        <Run Text="Date: "/><Run Text="{Binding BillDateTime, StringFormat='{}{0:dd MMM yyyy  HH:mm}', Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+                <TextBlock Text="{Binding Type}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                           FontSize="9" FontWeight="Bold" Foreground="White" Background="#64748B" 
+                           Padding="8,3" FontFamily="Consolas"/>
+            </Grid>
+
+            <!-- Items Header Divider -->
+            <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                       HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,8"/>
+
+            <!-- ═══ ITEMS TABLE HEADER ═══ -->
+            <Grid Margin="0,4,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="55"/>
+                    <ColumnDefinition Width="70"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Item" FontSize="10" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas"/>
+                <TextBlock Grid.Column="1" Text="Qty" FontSize="10" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Text="Price" FontSize="10" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="3" Text="Total" FontSize="10" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                       HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,0,0,4"/>
+
+            <!-- ═══ ITEMS LIST ═══ -->
+            <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="40"/>
+                                <ColumnDefinition Width="55"/>
+                                <ColumnDefinition Width="70"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding ItemDescription}" FontSize="10" Foreground="#1E293B" 
+                                       TextWrapping="Wrap" FontFamily="Consolas"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Quantity}" FontSize="10" Foreground="#1E293B" 
+                                       HorizontalAlignment="Center" VerticalAlignment="Top" FontFamily="Consolas"/>
+                            <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat='{}{0:N0}'}" FontSize="10" 
+                                       Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Top" FontFamily="Consolas"/>
+                            <TextBlock Grid.Column="3" Text="{Binding TotalPrice, StringFormat='{}{0:N0}'}" FontSize="10" 
+                                       Foreground="#1E293B" HorizontalAlignment="Right" VerticalAlignment="Top" 
+                                       FontWeight="SemiBold" FontFamily="Consolas"/>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Totals Divider -->
+            <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                       HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,10"/>
+
+            <!-- ═══ TOTALS SECTION ═══ -->
+            <StackPanel HorizontalAlignment="Right" Width="200">
+                <Grid Margin="0,3">
+                    <TextBlock Text="Sub Total:" FontSize="10" Foreground="#334155" FontFamily="Consolas" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SubTotal, StringFormat='Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
+                </Grid>
+                <Grid Margin="0,2">
+                    <TextBlock Text="Discount:" FontSize="10" Foreground="#334155" FontFamily="Consolas"/>
+                    <TextBlock Text="{Binding DiscountAmount, StringFormat='-Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#EF4444" FontFamily="Consolas"/>
+                </Grid>
+                <Grid Margin="0,2" Visibility="{Binding TaxAmount, Converter={StaticResource NumToVis}}">
+                    <TextBlock Text="Tax:" FontSize="10" Foreground="#334155" FontFamily="Consolas"/>
+                    <TextBlock Text="{Binding TaxAmount, StringFormat='Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#1E293B" FontFamily="Consolas"/>
+                </Grid>
+
+                <!-- Double divider before grand total -->
+                <TextBlock Text="==========================================" FontSize="9" FontFamily="Consolas"
+                           Foreground="#94A3B8" Margin="0,6"/>
+
+                <Grid Margin="0,4">
+                    <TextBlock Text="GRAND TOTAL:" FontSize="12" Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding GrandTotal, StringFormat='Rs.{0:N0}'}" FontSize="12" HorizontalAlignment="Right" 
+                               Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
+                </Grid>
+
+                <!-- Payment details -->
+                <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                           Foreground="#CBD5E1" Margin="0,6"/>
+
+                <Grid Margin="0,2">
+                    <TextBlock Text="Cash Received:" FontSize="10" Foreground="#64748B" FontFamily="Consolas"/>
+                    <TextBlock Text="{Binding CashReceived, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#1E293B" FontFamily="Consolas"/>
+                </Grid>
+                <Grid Margin="0,2">
+                    <TextBlock Text="Change:" FontSize="10" Foreground="#64748B" FontFamily="Consolas"/>
+                    <TextBlock Text="{Binding ChangeGiven, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#1E293B" FontFamily="Consolas"/>
+                </Grid>
+
+                <!-- Credit/Due info (only if has pending credit) -->
+                <Grid Margin="0,2" Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="Paid Amount:" FontSize="10" Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding PaidAmount, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
+                </Grid>
+                <Grid Margin="0,2" Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="DUE AMOUNT:" FontSize="10" Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding RemainingAmount, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                               Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- Footer Divider -->
+            <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                       HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,15,0,0"/>
+
+            <!-- ═══ FOOTER ═══ -->
+            <TextBlock Text="Thank you for shopping!" FontSize="10" HorizontalAlignment="Center"
+                       Foreground="#64748B" Margin="0,8" FontFamily="Consolas"/>
+            <TextBlock Text="Please come again" FontSize="9" HorizontalAlignment="Center"
+                       Foreground="#94A3B8" FontFamily="Consolas"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -60,7 +60,6 @@
                         <DataGridTextColumn Header="Date" Binding="{Binding BillDateTime, StringFormat='dd/MM/yyyy HH:mm'}" Width="140"/>
                         <DataGridTextColumn Header="Customer" Binding="{Binding Customer.Name}" Width="130"/>
                         <DataGridTextColumn Header="Cashier" Binding="{Binding User.FullName}" Width="130"/>
-                        <DataGridTextColumn Header="Total" Binding="{Binding GrandTotal, StringFormat='Rs.{0:N2}'}" Width="100"/>
                         <DataGridTextColumn Header="Attempts" Binding="{Binding PrintAttempts}" Width="75"/>
                         <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="*"/>
                     </DataGrid.Columns>

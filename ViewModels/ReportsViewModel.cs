@@ -16,6 +16,8 @@ namespace GroceryPOS.ViewModels
     {
         private readonly ReportService _reportService;
         private readonly IStockService _stockService;
+        private readonly PrintService _printService;
+        private readonly AuthService _authService;
 
         public ObservableCollection<Bill> SalesReport { get; set; } = new();
         public ObservableCollection<ReportItem> ProductReport { get; set; } = new();
@@ -93,13 +95,37 @@ namespace GroceryPOS.ViewModels
         private bool _isRevenueVisible = true;
         public bool IsRevenueVisible { get => _isRevenueVisible; set => SetProperty(ref _isRevenueVisible, value); }
 
-        public ICommand ExportReportCommand { get; }
+        // --- Bill Detail Overlay ---
+        private Bill? _selectedHistoryBill;
+        public Bill? SelectedHistoryBill
+        {
+            get => _selectedHistoryBill;
+            set => SetProperty(ref _selectedHistoryBill, value);
+        }
 
-        public ReportsViewModel(ReportService reportService, IStockService stockService)
+        private bool _isBillDetailOpen;
+        public bool IsBillDetailOpen
+        {
+            get => _isBillDetailOpen;
+            set => SetProperty(ref _isBillDetailOpen, value);
+        }
+
+        public ICommand ExportReportCommand { get; }
+        public ICommand ViewBillCommand { get; }
+        public ICommand PrintBillCommand { get; }
+        public ICommand CloseBillDetailCommand { get; }
+
+        public ReportsViewModel(ReportService reportService, IStockService stockService, PrintService printService, AuthService authService)
         {
             _reportService = reportService;
             _stockService = stockService;
+            _printService = printService;
+            _authService = authService;
+
             ExportReportCommand = new RelayCommand(ExportReport);
+            ViewBillCommand = new RelayCommand(obj => ViewBill(obj as Bill));
+            PrintBillCommand = new RelayCommand(obj => PrintBill(obj as Bill));
+            CloseBillDetailCommand = new RelayCommand(_ => CloseBillDetail());
             
             _stockService.StockChanged += GenerateReport;
             GenerateReport();
@@ -117,9 +143,6 @@ namespace GroceryPOS.ViewModels
             try
             {
                 DateTime start, end;
-                SalesReport.Clear();
-                ProductReport.Clear();
-                LowStockReport.Clear();
 
                 var type = SelectedReportType?.Trim();
 
@@ -190,9 +213,13 @@ namespace GroceryPOS.ViewModels
                     ShowProductGrid = true;
                     ShowLowStockGrid = false;
                     var data = _reportService.GetProductWiseReport(start, end);
-                    foreach (var r in data) ProductReport.Add(r);
-                    TotalRevenue = data.Sum(r => r.TotalRevenue);
-                    TotalSalesCount = data.Sum(r => r.QuantitySold);
+                    Dispatch(() =>
+                    {
+                        ProductReport.Clear();
+                        foreach (var r in data) ProductReport.Add(r);
+                        TotalRevenue = data.Sum(r => r.TotalRevenue);
+                        TotalSalesCount = data.Sum(r => r.QuantitySold);
+                    });
                 }
                 else if (string.Equals(type, "Low Stock", StringComparison.OrdinalIgnoreCase))
                 {
@@ -200,9 +227,13 @@ namespace GroceryPOS.ViewModels
                     ShowProductGrid = false;
                     ShowLowStockGrid = true;
                     var data = _stockService.GetLowStockItems();
-                    foreach (var i in data) LowStockReport.Add(i);
-                    TotalRevenue = 0; // Not applicable for low stock
-                    TotalSalesCount = data.Count;
+                    Dispatch(() =>
+                    {
+                        LowStockReport.Clear();
+                        foreach (var i in data) LowStockReport.Add(i);
+                        TotalRevenue = 0; // Not applicable for low stock
+                        TotalSalesCount = data.Count;
+                    });
                 }
                 else
                 {
@@ -210,23 +241,27 @@ namespace GroceryPOS.ViewModels
                     ShowProductGrid = false;
                     ShowLowStockGrid = false;
                     var data = _reportService.GetByDateRange(start, end);
-                    foreach (var s in data) SalesReport.Add(s);
-                    TotalRevenue = data.Sum(s => s.GrandTotal);
-                    TotalSalesCount = data.Count;
-
-                    // Weekly performance summary for Monthly reports
-                    if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
+                    Dispatch(() =>
                     {
-                        var weeklyGroups = data.GroupBy(b => {
-                            int d = (7 + (b.BillDateTime.DayOfWeek - DayOfWeek.Monday)) % 7;
-                            return b.BillDateTime.AddDays(-1 * d).Date;
-                        }).OrderBy(g => g.Key);
+                        SalesReport.Clear();
+                        foreach (var s in data) SalesReport.Add(s);
+                        TotalRevenue = data.Sum(s => s.GrandTotal);
+                        TotalSalesCount = data.Count;
 
-                        foreach (var week in weeklyGroups)
+                        // Weekly performance summary for Monthly reports
+                        if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
                         {
-                            AppLogger.Info($"Week starting {week.Key:yyyy-MM-dd}: Rs.{week.Sum(b => b.GrandTotal):N2} ({week.Count()} bills)");
+                            var weeklyGroups = data.GroupBy(b => {
+                                int d = (7 + (b.BillDateTime.DayOfWeek - DayOfWeek.Monday)) % 7;
+                                return b.BillDateTime.AddDays(-1 * d).Date;
+                            }).OrderBy(g => g.Key);
+
+                            foreach (var week in weeklyGroups)
+                            {
+                                AppLogger.Info($"Week starting {week.Key:yyyy-MM-dd}: Rs.{week.Sum(b => b.GrandTotal):N2} ({week.Count()} bills)");
+                            }
                         }
-                    }
+                    });
                 }
 
                 // 3. Log System Diagnostics
@@ -310,6 +345,24 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("Error exporting report", ex);
             }
+        }
+        private void ViewBill(Bill? bill)
+        {
+            if (bill == null) return;
+            SelectedHistoryBill = bill;
+            IsBillDetailOpen = true;
+        }
+
+        private void PrintBill(Bill? bill)
+        {
+            if (bill == null) return;
+            _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
+        }
+
+        private void CloseBillDetail()
+        {
+            IsBillDetailOpen = false;
+            SelectedHistoryBill = null;
         }
     }
 }

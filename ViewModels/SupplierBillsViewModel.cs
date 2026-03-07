@@ -234,7 +234,7 @@ namespace GroceryPOS.ViewModels
         {
             try
             {
-                StatusMessage = "Loading recent supplies...";
+                StatusMessage = "Loading recent stock...";
                 // Clear search state silently to avoid infinite recursion
                 _searchBarcode = string.Empty;
                 OnPropertyChanged(nameof(SearchBarcode));
@@ -243,12 +243,12 @@ namespace GroceryPOS.ViewModels
                 var allSupplies = await _stockService.GetAllRecentSuppliesAsync(50);
                 SupplyHistory.Clear();
                 foreach (var entry in allSupplies) SupplyHistory.Add(entry);
-                StatusMessage = $"Showing {allSupplies.Count} recent supply entries.";
+                StatusMessage = $"Showing {allSupplies.Count} recent stock entries.";
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Failed to load all supplies", ex);
-                StatusMessage = "Error loading supplies.";
+                StatusMessage = "Error loading stock.";
             }
         }
 
@@ -268,11 +268,11 @@ namespace GroceryPOS.ViewModels
             
             if (FoundItem == null)
             {
-                StatusMessage = "Please search for an item first to record a supply entry.";
+                StatusMessage = "Please search for an item first to record a stock entry.";
             }
             else
             {
-                StatusMessage = $"Registering supply for: {FoundItem.Description}";
+                StatusMessage = $"Registering stock for: {FoundItem.Description}";
             }
         }
 
@@ -368,7 +368,7 @@ namespace GroceryPOS.ViewModels
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     };
                     ManualSearchBarcode = FoundItem.Description; // Show description in update modal box
-                    StatusMessage = "Editing supply for: " + FoundItem.Description;
+                    StatusMessage = "Editing stock for: " + FoundItem.Description;
                     
                     if (!string.IsNullOrEmpty(entry.ImagePath) && File.Exists(entry.ImagePath))
                     {
@@ -525,11 +525,11 @@ namespace GroceryPOS.ViewModels
                 var history = await _stockService.GetSupplyHistoryAsync(FoundItem.ItemId);
                 SupplyHistory.Clear();
                 foreach (var entry in history) SupplyHistory.Add(entry);
-                StatusMessage = $"Found {history.Count} supply entries.";
+                StatusMessage = $"Found {history.Count} stock entries.";
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Failed to load supply history", ex);
+                AppLogger.Error("Failed to load stock history", ex);
                 StatusMessage = "Error loading history.";
             }
         }
@@ -539,7 +539,7 @@ namespace GroceryPOS.ViewModels
             var openFileDialog = new Microsoft.Win32.OpenFileDialog
             {
                 Filter = "Image files (*.jpg, *.jpeg, *.png)|*.jpg;*.jpeg;*.png",
-                Title = "Select Supplier Bill Image"
+                Title = "Select Stock Bill Image"
             };
 
             if (openFileDialog.ShowDialog() == true)
@@ -584,12 +584,12 @@ namespace GroceryPOS.ViewModels
                 {
                     entry.Id = SelectedEntry.Id;
                     await _stockService.UpdateSupplyAsync(entry, TempImagePath);
-                    StatusMessage = "Supply updated successfully!";
+                    StatusMessage = "Stock updated successfully!";
                 }
                 else
                 {
                     await _stockService.RegisterSupplyAsync(entry, TempImagePath);
-                    StatusMessage = "Supply registered successfully!";
+                    StatusMessage = "Stock registered successfully!";
                 }
                 
                 IsAddingNew = false;
@@ -604,8 +604,8 @@ namespace GroceryPOS.ViewModels
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Failed to save supply", ex);
-                MessageBox.Show("Error registration supply: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                AppLogger.Error("Failed to save stock", ex);
+                MessageBox.Show("Error registration stock: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -663,7 +663,7 @@ namespace GroceryPOS.ViewModels
                 
                 BillImagePreview = bitmap;
                 IsImageAvailable = true;
-                StatusMessage = "Previewing supply bill image.";
+                StatusMessage = "Previewing stock bill image.";
             }
             catch (Exception ex)
             {

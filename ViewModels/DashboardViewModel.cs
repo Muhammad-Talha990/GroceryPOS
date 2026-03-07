@@ -23,6 +23,12 @@ namespace GroceryPOS.ViewModels
         private int _todaySaleCount;
         public int TodaySaleCount { get => _todaySaleCount; set => SetProperty(ref _todaySaleCount, value); }
 
+        private double _todayCredit;
+        public double TodayCredit { get => _todayCredit; set => SetProperty(ref _todayCredit, value); }
+
+        private double _todayCash;
+        public double TodayCash { get => _todayCash; set => SetProperty(ref _todayCash, value); }
+
         private int _totalProducts;
         public int TotalProducts { get => _totalProducts; set => SetProperty(ref _totalProducts, value); }
 
@@ -59,6 +65,8 @@ namespace GroceryPOS.ViewModels
         {
             TodaySales = _billService.GetTodayTotal();
             TodaySaleCount = _billService.GetTodayBillCount();
+            TodayCredit = _billService.GetTodayTotalCredit();
+            TodayCash = _billService.GetTodayTotalCash();
             TotalProducts = _itemService.GetTotalItemCount();
             LowStockCount = _stockService.GetLowStockCount();
 

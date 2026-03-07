@@ -278,6 +278,23 @@ namespace GroceryPOS.Services
                 g.DrawString($"Orig Bill#: {_billToPrint.ReferenceBillId.Value:D5}", boldFont, Brushes.Black, margin, y);
                 y += 13;
             }
+
+            // --- Customer Info ---
+            if (_billToPrint.CustomerId.HasValue)
+            {
+                string custName = _billToPrint.Customer?.FullName ?? "Customer";
+                g.DrawString($"Cust: {custName}", normalFont, Brushes.Black, margin, y);
+                y += 13;
+
+                if (!string.IsNullOrEmpty(_billToPrint.BillingAddress))
+                {
+                    RectangleF addrRect = new RectangleF(margin, y, pageWidth, 40);
+                    g.DrawString($"Addr: {_billToPrint.BillingAddress}", smallFont, Brushes.Black, addrRect);
+                    SizeF addrSize = g.MeasureString($"Addr: {_billToPrint.BillingAddress}", smallFont, (int)pageWidth);
+                    y += Math.Max(13, addrSize.Height + 2);
+                }
+            }
+
             g.DrawString($"Date: {_billToPrint.BillDateTime}", normalFont, Brushes.Black, margin, y);
             y += 13;
             g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y);

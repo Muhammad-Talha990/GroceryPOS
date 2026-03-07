@@ -76,7 +76,6 @@ public partial class App : Application
         services.AddSingleton<CreditService>();
         services.AddSingleton<PrintService>();
         services.AddSingleton<ReportService>();
-        services.AddSingleton<BackupService>();
         services.AddSingleton<IReturnService, ReturnService>();
 
         // --- Supplier Bill Management ---
@@ -84,18 +83,17 @@ public partial class App : Application
         services.AddSingleton<UniqueIdGenerator>();
 
         // --- ViewModels ---
-        services.AddTransient<LoginViewModel>();
-        services.AddTransient<MainViewModel>();
-        services.AddTransient<DashboardViewModel>();
-        services.AddTransient<ProductsViewModel>();
-        services.AddTransient<BillingViewModel>();
-        services.AddTransient<ReportsViewModel>();
-        services.AddTransient<BackupViewModel>();
-        services.AddTransient<SupplierBillsViewModel>();
-        services.AddTransient<ReturnViewModel>();
-        services.AddTransient<PendingPrintsViewModel>();
-        services.AddTransient<CustomerManagementViewModel>();
-        services.AddTransient<CustomerLedgerViewModel>();
+        services.AddSingleton<LoginViewModel>();
+        services.AddSingleton<MainViewModel>();
+        services.AddSingleton<DashboardViewModel>();
+        services.AddSingleton<ProductsViewModel>();
+        services.AddSingleton<BillingViewModel>();
+        services.AddSingleton<ReportsViewModel>();
+        services.AddSingleton<SupplierBillsViewModel>();
+        services.AddSingleton<ReturnViewModel>();
+        services.AddSingleton<PendingPrintsViewModel>();
+        services.AddSingleton<CustomerManagementViewModel>();
+        services.AddSingleton<CustomerLedgerViewModel>();
 
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -103,6 +101,7 @@ public partial class App : Application
     private void ShowLogin()
     {
         var loginVM = _serviceProvider.GetRequiredService<LoginViewModel>();
+        loginVM.Reset();
         var loginView = new LoginView { DataContext = loginVM };
 
         loginVM.LoginSucceeded += () =>

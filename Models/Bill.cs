@@ -84,6 +84,9 @@ namespace GroceryPOS.Models
         /// <summary>"Paid" | "Partial" | "Unpaid"</summary>
         public string PaymentStatus { get; set; } = "Paid";
 
+        /// <summary>The specific address selected for this bill (from customer's options).</summary>
+        public string? BillingAddress { get; set; }
+
         /// <summary>Helper to check if this bill needs printing.</summary>
         public bool IsPendingPrint => !IsPrinted && Status != "Cancelled";
 

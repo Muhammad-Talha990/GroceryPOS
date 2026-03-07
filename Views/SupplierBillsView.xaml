@@ -34,7 +34,7 @@
         <!-- Header Area -->
         <Grid Grid.Row="0" Grid.ColumnSpan="2" Margin="0,0,0,24">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="🚛 Supply History" FontSize="26" FontWeight="Bold" 
+                <TextBlock Text="🚛 Stock History" FontSize="26" FontWeight="Bold" 
                            Foreground="{DynamicResource TextBrush}" Margin="0,0,30,0"/>
 
                 <Border Style="{DynamicResource CardBorder}" Padding="12,2" Width="400" Background="White" Height="42" x:Name="MainSearchBorder">
@@ -71,6 +71,12 @@
                         <ListBox ItemsSource="{Binding MainProductSearchResults}" 
                                  SelectedItem="{Binding SelectedMainProductResult}"
                                  BorderThickness="0" Background="Transparent" Padding="6">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Padding="10,6" CornerRadius="6" x:Name="MainItemBorder" Margin="0,0,0,1">
@@ -105,11 +111,11 @@
                 <Button Content="🔄  Refresh" Command="{Binding RefreshCommand}" 
                         Style="{DynamicResource PrimaryButton}" Padding="18,10" FontSize="13" Margin="0,0,12,0" Background="#64748B"
                         Visibility="{Binding IsAddingNew, Converter={StaticResource InverseBoolToVis}}"/>
-                <Button Content="➕  Add New Supply" Command="{Binding ShowAddFormCommand}" 
+                <Button Content="➕  Add New Stock" Command="{Binding ShowAddFormCommand}" 
                         Style="{DynamicResource PrimaryButton}" Background="{DynamicResource SuccessBrush}" 
                         Padding="22,10" FontSize="13" FontWeight="SemiBold"
                         Visibility="{Binding IsAddingNew, Converter={StaticResource InverseBoolToVis}}"
-                        ToolTip="Register a new supply entry." Cursor="Hand"/>
+                        ToolTip="Register a new stock entry." Cursor="Hand"/>
             </StackPanel>
         </Grid>
 
@@ -192,7 +198,7 @@
                                 Visibility="{Binding SupplyHistory.Count, Converter={StaticResource EmptyToVis}}"
                                 Panel.ZIndex="10" IsHitTestVisible="False">
                         <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,10" Opacity="0.3"/>
-                        <TextBlock Text="No supply records found" Foreground="{DynamicResource SubTextBrush}" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="No stock records found" Foreground="{DynamicResource SubTextBrush}" FontSize="16" FontWeight="SemiBold"/>
                         <TextBlock Text="Try searching for a barcode or product name" Foreground="{DynamicResource SubTextBrush}" 
                                    FontSize="13" Margin="0,4,0,0" Opacity="0.6"/>
                     </StackPanel>
@@ -208,7 +214,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 
-                <TextBlock Grid.Row="0" Text="🧾 Supply Bill Preview" FontSize="16" FontWeight="Bold" 
+                <TextBlock Grid.Row="0" Text="🧾 Stock Bill Preview" FontSize="16" FontWeight="Bold" 
                            Foreground="{DynamicResource TextBrush}" Margin="0,0,0,16"/>
 
                 <Grid Grid.Row="1">
@@ -230,7 +236,7 @@
                                 BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
                             <Grid>
                                 <StackPanel>
-                                    <TextBlock Text="SUPPLY DATE" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,2"/>
+                                    <TextBlock Text="STOCK DATE" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,2"/>
                                     <TextBlock Text="{Binding SelectedEntry.SystemDate, StringFormat='dd MMMM yyyy, hh:mm tt'}" 
                                                FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}"/>
                                 </StackPanel>
@@ -276,10 +282,10 @@
                             <TextBlock FontSize="22" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Text" Value="🚀 Register Supply"/>
+                                        <Setter Property="Text" Value="🚀 Register Stock"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                <Setter Property="Text" Value="✏️ Update Supply"/>
+                                                <Setter Property="Text" Value="✏️ Update Stock"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -335,6 +341,12 @@
                                         <ListBox ItemsSource="{Binding ProductSearchResults}" 
                                                  SelectedItem="{Binding SelectedProductResult}"
                                                  BorderThickness="0" Background="Transparent" Padding="6">
+                                            <ListBox.ItemContainerStyle>
+                                                <Style TargetType="ListBoxItem">
+                                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                                    <Setter Property="Padding" Value="0"/>
+                                                </Style>
+                                            </ListBox.ItemContainerStyle>
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate>
                                                             <Border Padding="10,6" CornerRadius="6" x:Name="ItemBorder" Margin="0,0,0,1">
@@ -499,10 +511,10 @@
                                 Padding="0,12" FontSize="15" FontWeight="Bold">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
-                                    <Setter Property="Content" Value="✅ Register Supply"/>
+                                    <Setter Property="Content" Value="✅ Register Stock"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                            <Setter Property="Content" Value="💾 Update Supply"/>
+                                            <Setter Property="Content" Value="💾 Update Stock"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>

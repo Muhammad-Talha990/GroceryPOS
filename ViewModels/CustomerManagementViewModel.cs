@@ -91,6 +91,20 @@ namespace GroceryPOS.ViewModels
             set => SetProperty(ref _editAddress, value);
         }
 
+        private string _editAddress2 = string.Empty;
+        public string EditAddress2
+        {
+            get => _editAddress2;
+            set => SetProperty(ref _editAddress2, value);
+        }
+
+        private string _editAddress3 = string.Empty;
+        public string EditAddress3
+        {
+            get => _editAddress3;
+            set => SetProperty(ref _editAddress3, value);
+        }
+
         private string _editError = string.Empty;
         public string EditError
         {
@@ -197,6 +211,8 @@ namespace GroceryPOS.ViewModels
             EditPhone    = string.Empty;
             EditPhone2   = string.Empty;
             EditAddress  = string.Empty;
+            EditAddress2 = string.Empty;
+            EditAddress3 = string.Empty;
             EditError    = string.Empty;
             DialogTitle  = "➕ Add New Customer";
             IsEditDialogOpen = true;
@@ -210,6 +226,8 @@ namespace GroceryPOS.ViewModels
             EditPhone    = customer.PrimaryPhone;
             EditPhone2   = customer.SecondaryPhone ?? string.Empty;
             EditAddress  = customer.Address ?? string.Empty;
+            EditAddress2 = customer.Address2 ?? string.Empty;
+            EditAddress3 = customer.Address3 ?? string.Empty;
             EditError    = string.Empty;
             DialogTitle  = "✏ Edit Customer";
             IsEditDialogOpen = true;
@@ -248,7 +266,9 @@ namespace GroceryPOS.ViewModels
                     FullName       = fullName,
                     PrimaryPhone   = primaryPhone,
                     SecondaryPhone = string.IsNullOrWhiteSpace(EditPhone2) ? null : EditPhone2.Trim(),
-                    Address        = string.IsNullOrWhiteSpace(EditAddress) ? null : EditAddress.Trim()
+                    Address        = string.IsNullOrWhiteSpace(EditAddress) ? null : EditAddress.Trim(),
+                    Address2       = string.IsNullOrWhiteSpace(EditAddress2) ? null : EditAddress2.Trim(),
+                    Address3       = string.IsNullOrWhiteSpace(EditAddress3) ? null : EditAddress3.Trim()
                 };
 
                 if (_editingCustomerId == 0)

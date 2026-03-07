@@ -4,7 +4,7 @@ using GroceryPOS.Data;
 namespace GroceryPOS.Services
 {
     /// <summary>
-    /// Generates unique professional Bill IDs for Supplier Bills.
+    /// Generates unique professional Bill IDs for Stock entries.
     /// Format: SUP-[YEAR]-[SEQUENCE] (e.g., SUP-2026-0001).
     /// </summary>
     public class UniqueIdGenerator

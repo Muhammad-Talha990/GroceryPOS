@@ -84,13 +84,60 @@ namespace GroceryPOS.Models
             get => _isActive;
             set => SetProperty(ref _isActive, value);
         }
-
-        /// <summary>For credit sales: amount paid now (may be less than GrandTotal).</summary>
-        private string _paidAmountText = string.Empty;
-        public string PaidAmountText
+        private double _pendingCreditAmount;
+        public double PendingCreditAmount
         {
-            get => _paidAmountText;
-            set => SetProperty(ref _paidAmountText, value);
+            get => _pendingCreditAmount;
+            set => SetProperty(ref _pendingCreditAmount, value);
+        }
+
+        private Bill? _previewHistoryBill;
+        public Bill? PreviewHistoryBill
+        {
+            get => _previewHistoryBill;
+            set => SetProperty(ref _previewHistoryBill, value);
+        }
+
+        private bool _isHistoryPaymentOpen;
+        public bool IsHistoryPaymentOpen
+        {
+            get => _isHistoryPaymentOpen;
+            set => SetProperty(ref _isHistoryPaymentOpen, value);
+        }
+
+        private string _historyPaymentAmount = string.Empty;
+        public string HistoryPaymentAmount
+        {
+            get => _historyPaymentAmount;
+            set => SetProperty(ref _historyPaymentAmount, value);
+        }
+
+        private string _historyPaymentNote = string.Empty;
+        public string HistoryPaymentNote
+        {
+            get => _historyPaymentNote;
+            set => SetProperty(ref _historyPaymentNote, value);
+        }
+
+        private string _historyPaymentError = string.Empty;
+        public string HistoryPaymentError
+        {
+            get => _historyPaymentError;
+            set => SetProperty(ref _historyPaymentError, value);
+        }
+
+        private string _statusMessage = string.Empty;
+        public string StatusMessage
+        {
+            get => _statusMessage;
+            set => SetProperty(ref _statusMessage, value);
+        }
+        
+        private bool _isBillDetailOpen;
+        public bool IsBillDetailOpen
+        {
+            get => _isBillDetailOpen;
+            set => SetProperty(ref _isBillDetailOpen, value);
         }
     }
 }

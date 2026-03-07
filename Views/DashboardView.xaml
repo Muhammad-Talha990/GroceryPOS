@@ -17,14 +17,12 @@
 
             <!-- Stats Cards -->
             <UniformGrid Columns="4" Margin="0,0,0,28">
-
-                <!-- Today's Sales -->
+                <!-- Today's Total Sales -->
                 <Border Style="{DynamicResource CardBorder}" Margin="0,0,12,0">
                     <StackPanel>
                         <TextBlock Text="💰" FontSize="32" Margin="0,0,0,12"/>
-                        <TextBlock Text="Today's Sales" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
-                        <TextBlock FontSize="32" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"
-                                   Margin="0,6,0,0">
+                        <TextBlock Text="Total Sales Today" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}" Margin="0,6,0,0">
                             <TextBlock.Text>
                                 <Binding Path="TodaySales" StringFormat="Rs.{0:N0}"/>
                             </TextBlock.Text>
@@ -36,21 +34,34 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Total Products -->
+                <!-- Today's Credit (Due) -->
                 <Border Style="{DynamicResource CardBorder}" Margin="6,0">
                     <StackPanel>
-                        <TextBlock Text="📦" FontSize="32" Margin="0,0,0,12"/>
-                        <TextBlock Text="Total Products" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
-                        <TextBlock Text="{Binding TotalProducts}" FontSize="32" FontWeight="Bold"
-                                   Foreground="{DynamicResource AccentBrush}" Margin="0,6,0,0"/>
-                        <TextBlock Text="active items" Foreground="{DynamicResource SubTextBrush}"
-                                   FontSize="13" Margin="0,4,0,0"/>
+                        <TextBlock Text="💳" FontSize="32" Margin="0,0,0,12"/>
+                        <TextBlock Text="Customer Credit (Due)" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource DangerBrush}" Margin="0,6,0,0">
+                            <TextBlock.Text>
+                                <Binding Path="TodayCredit" StringFormat="Rs.{0:N0}"/>
+                            </TextBlock.Text>
+                        </TextBlock>
+                        <TextBlock Text="unpaid amount today" Foreground="{DynamicResource SubTextBrush}" FontSize="13" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Border>
 
+                <!-- Cash Received Today -->
+                <Border Style="{DynamicResource CardBorder}" Margin="6,0">
+                    <StackPanel>
+                        <TextBlock Text="💵" FontSize="32" Margin="0,0,0,12"/>
+                        <TextBlock Text="Cash Received Today" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource SuccessBrush}" Margin="0,6,0,0">
+                            <TextBlock.Text>
+                                <Binding Path="TodayCash" StringFormat="Rs.{0:N0}"/>
+                            </TextBlock.Text>
+                        </TextBlock>
+                        <TextBlock Text="actual cash collected" Foreground="{DynamicResource SubTextBrush}" FontSize="13" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
 
-
-                <!-- Quick Action -->
                 <Border Style="{DynamicResource CardBorder}" Margin="12,0,0,0">
                     <StackPanel>
                         <TextBlock Text="⏰" FontSize="32" Margin="0,0,0,12"/>

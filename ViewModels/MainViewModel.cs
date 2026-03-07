@@ -90,23 +90,19 @@ namespace GroceryPOS.ViewModels
             _selectedMenu = view;
             OnPropertyChanged(nameof(SelectedMenu));
 
-            var oldView = _currentView;
             CurrentView = view switch
             {
                 "Dashboard"    => _serviceProvider.GetRequiredService<DashboardViewModel>(),
                 "Products"     => _serviceProvider.GetRequiredService<ProductsViewModel>(),
                 "Billing"      => _serviceProvider.GetRequiredService<BillingViewModel>(),
                 "Reports"      => _serviceProvider.GetRequiredService<ReportsViewModel>(),
-                "Backup"       => _serviceProvider.GetRequiredService<BackupViewModel>(),
                 "SupplierBills"=> _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
-                "Returns"      => _serviceProvider.GetRequiredService<ReturnViewModel>(),
+                "Returns"      => RefreshReturnVM(),
                 "PendingPrints"=> _serviceProvider.GetRequiredService<PendingPrintsViewModel>(),
                 "Customers"    => CreateCustomerManagementVM(),
                 "CustomerLedger" => CreateCustomerLedgerVM(PendingLedgerCustomerId),
                 _ => _serviceProvider.GetRequiredService<DashboardViewModel>()
             };
-
-            oldView?.Dispose();
         }
 
         private CustomerManagementViewModel CreateCustomerManagementVM()
@@ -125,6 +121,13 @@ namespace GroceryPOS.ViewModels
             var vm = _serviceProvider.GetRequiredService<CustomerLedgerViewModel>();
             vm.GoBackRequested += () => NavigateTo("Customers");
             if (customerId > 0) vm.Load(customerId);
+            return vm;
+        }
+
+        private ReturnViewModel RefreshReturnVM()
+        {
+            var vm = _serviceProvider.GetRequiredService<ReturnViewModel>();
+            vm.ClearForm();
             return vm;
         }
 

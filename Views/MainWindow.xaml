@@ -23,9 +23,6 @@
         <DataTemplate DataType="{x:Type vm:ReportsViewModel}">
             <local:ReportsView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:BackupViewModel}">
-            <local:BackupView/>
-        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:SupplierBillsViewModel}">
             <local:SupplierBillsView/>
         </DataTemplate>
@@ -53,22 +50,22 @@
         <Border Grid.Column="0" Background="{DynamicResource SidebarBgBrush}">
             <DockPanel>
                 <!-- Sidebar Header -->
-                <StackPanel DockPanel.Dock="Top" Margin="0,24,0,30">
-                    <TextBlock Text="🛒" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                    <TextBlock Text="GroceryPOS" FontSize="20" FontWeight="Bold" Foreground="White"
+                <StackPanel DockPanel.Dock="Top" Margin="0,15,0,15">
+                    <TextBlock Text="🛒" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Text="GroceryPOS" FontSize="18" FontWeight="Bold" Foreground="White"
                                HorizontalAlignment="Center" FontFamily="{DynamicResource AppFont}"/>
-                    <TextBlock Text="Point of Sale System" FontSize="12" Foreground="#94A3B8"
-                               HorizontalAlignment="Center" Margin="0,4,0,0" FontFamily="{DynamicResource AppFont}"/>
+                    <TextBlock Text="Point of Sale System" FontSize="11" Foreground="#94A3B8"
+                               HorizontalAlignment="Center" Margin="0,2,0,0" FontFamily="{DynamicResource AppFont}"/>
                 </StackPanel>
 
                 <!-- User Info + Logout at Bottom -->
-                <StackPanel DockPanel.Dock="Bottom" Margin="16,0,16,24">
-                    <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,12">
+                <StackPanel DockPanel.Dock="Bottom" Margin="16,0,16,15">
+                    <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
                         <StackPanel>
-                            <TextBlock Text="{Binding CurrentUserName}" FontSize="14" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding CurrentUserName}" FontSize="13" FontWeight="SemiBold"
                                        Foreground="White" FontFamily="{DynamicResource AppFont}"/>
-                            <TextBlock Text="{Binding CurrentUserRole}" FontSize="12" Foreground="#94A3B8"
-                                       FontFamily="{DynamicResource AppFont}" Margin="0,2,0,0"/>
+                            <TextBlock Text="{Binding CurrentUserRole}" FontSize="11" Foreground="#94A3B8"
+                                       FontFamily="{DynamicResource AppFont}" Margin="0,1,0,0"/>
                         </StackPanel>
                     </Border>
                     <Button Content="🚪  Logout" Style="{DynamicResource SidebarButton}"
@@ -76,7 +73,6 @@
                 </StackPanel>
 
                 <!-- Navigation Menu -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0,0,0,0">
                     <Button Content="📊  Dashboard" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="Dashboard"/>
@@ -95,11 +91,8 @@
                             Command="{Binding NavigateCommand}" CommandParameter="Reports"
                             Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"/>
 
-                    <Button Content="💾  Backup" Style="{DynamicResource SidebarButton}"
-                            Command="{Binding NavigateCommand}" CommandParameter="Backup"
-                            Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"/>
 
-                    <Button Content="🧾  Supplier Bills" Style="{DynamicResource SidebarButton}"
+                    <Button Content="🧾  Stock" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="SupplierBills"
                             Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVis}}"/>
 
@@ -109,7 +102,6 @@
                     <Button Content="🖨️  Pending Prints" Style="{DynamicResource SidebarButton}"
                             Command="{Binding NavigateCommand}" CommandParameter="PendingPrints"/>
                 </StackPanel>
-                </ScrollViewer>
             </DockPanel>
         </Border>
 

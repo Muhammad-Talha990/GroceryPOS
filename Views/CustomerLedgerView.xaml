@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:converters="clr-namespace:GroceryPOS.Converters"
              xmlns:controls="clr-namespace:GroceryPOS.Views.Controls"
+             xmlns:helpers="clr-namespace:GroceryPOS.Helpers"
              Background="{DynamicResource BgBrush}" FontFamily="{DynamicResource AppFont}">
 
     <UserControl.Resources>
@@ -133,19 +134,30 @@
                         <DataGridTextColumn Header="Date" Binding="{Binding BillDateTime, StringFormat='yyyy-MM-dd HH:mm'}" Width="150"/>
                         <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber, Mode=OneWay}" Width="100" IsReadOnly="True"/>
                         <DataGridTextColumn Header="Paid" Binding="{Binding PaidAmount, StringFormat='Rs. {0:N0}'}" Width="100"/>
-                        <DataGridTextColumn Header="Remaining" Binding="{Binding RemainingAmount, StringFormat='Rs. {0:N0}'}" Width="*">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{DynamicResource SubTextBrush}"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding RemainingAmount, Converter={StaticResource GreaterThanZero}}" Value="True">
-                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
-                                            <Setter Property="FontWeight" Value="SemiBold"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
+                        <!-- Remaining Amount — hidden for fully paid bills -->
+                        <DataGridTemplateColumn Header="Remaining" Width="90">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Padding="4,0" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="{Binding RemainingAmount, StringFormat='Rs. {0:N0}'}"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                <Style.Triggers>
+                                                    <!-- Hide "Rs. 0" for fully paid bills — show muted dash -->
+                                                    <DataTrigger Binding="{Binding HasPendingCredit}" Value="False">
+                                                        <Setter Property="Text" Value="—"/>
+                                                        <Setter Property="Foreground" Value="{DynamicResource SubTextBrush}"/>
+                                                        <Setter Property="FontWeight" Value="Normal"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
 
                         <!-- Payment Status badge -->
                         <DataGridTemplateColumn Header="Status" Width="100">
@@ -322,9 +334,12 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
+                        <!-- Auto-focused textbox that only accepts decimals to prevent bad inputs during ledger payment -->
                         <TextBox Grid.Column="0" Text="{Binding PaymentAmountText, UpdateSourceTrigger=PropertyChanged}"
                                  Background="#0F172A" Foreground="White" FontSize="16" FontWeight="SemiBold"
-                                 Padding="10,8" BorderBrush="#334155" BorderThickness="1" CaretBrush="White"/>
+                                 Padding="10,8" BorderBrush="#334155" BorderThickness="1" CaretBrush="White"
+                                 helpers:FocusHelper.IsFocused="{Binding IsPaymentPanelOpen}"
+                                 helpers:FocusHelper.DecimalOnly="True"/>
                         <Button Grid.Column="1" Content="Pay Full" Command="{Binding PayFullRemainingCommand}"
                                 Foreground="#60A5FA" Background="#334155" Padding="10,8" Margin="8,0,0,0"
                                 BorderThickness="0" FontSize="12" Cursor="Hand">

@@ -85,7 +85,7 @@ namespace GroceryPOS.Data
                             UnitPrice   REAL    NOT NULL,
                             TotalPrice  REAL    NOT NULL,
                             FOREIGN KEY (Bill_id) REFERENCES Bill(bill_id) ON DELETE CASCADE,
-                            FOREIGN KEY (ItemId)  REFERENCES Item(itemId)  ON DELETE RESTRICT
+                            FOREIGN KEY (ItemId)  REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
                         );
                     ");
 
@@ -148,7 +148,7 @@ namespace GroceryPOS.Data
                             return_date         TEXT NOT NULL,
                             return_bill_id      TEXT NOT NULL,
                             FOREIGN KEY (bill_id)    REFERENCES Bill(bill_id) ON DELETE CASCADE,
-                            FOREIGN KEY (product_id) REFERENCES Item(itemId)  ON DELETE RESTRICT
+                            FOREIGN KEY (product_id) REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
                         );
                     ");
 
@@ -237,6 +237,9 @@ namespace GroceryPOS.Data
                     // ── Migration: Remove stale foreign keys from stock table ──
                     MigrateStockTableIfNeeded(conn);
 
+                    // ── Migration: Add ON UPDATE CASCADE to BillDescription and BILL_RETURNS ──
+                    MigrateCascadeForeignKeysIfNeeded(conn);
+
                     SeedUsers(conn);
                     
                     // Migrate Produce and Meat & Seafood to Other
@@ -300,7 +303,13 @@ namespace GroceryPOS.Data
         // ────────────────────────────────────────────
         private static void SeedItems(SqliteConnection conn)
         {
-            // Removed early return to allow incremental seeding of new default items
+            // Only seed if no items exist. This prevents deleted default items from re-appearing on restart.
+            using (var countCmd = conn.CreateCommand())
+            {
+                countCmd.CommandText = "SELECT COUNT(*) FROM Item;";
+                var count = Convert.ToInt64(countCmd.ExecuteScalar());
+                if (count > 0) return;
+            }
             
             var items = new[]
             {
@@ -487,6 +496,89 @@ namespace GroceryPOS.Data
             finally
             {
                 // Re-enable FK checks
+                Execute(conn, "PRAGMA foreign_keys = ON;");
+            }
+        }
+
+        // ────────────────────────────────────────────
+        //  Migration: Add ON UPDATE CASCADE to Item foreign keys
+        // ────────────────────────────────────────────
+        private static void MigrateCascadeForeignKeysIfNeeded(SqliteConnection conn)
+        {
+            // We check BillDescription table for the ON UPDATE CASCADE string in its sql definition
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name='BillDescription';";
+            var sql = cmd.ExecuteScalar()?.ToString();
+            
+            if (sql != null && sql.Contains("ON UPDATE CASCADE", StringComparison.OrdinalIgnoreCase))
+            {
+                return; // Already migrated
+            }
+
+            AppLogger.Info("DatabaseInitializer: Migrating BillDescription and BILL_RETURNS to add ON UPDATE CASCADE...");
+
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+
+            using var transaction = conn.BeginTransaction();
+            try
+            {
+                // -- Migrate BillDescription --
+                Execute(conn, "ALTER TABLE BillDescription RENAME TO BillDescription_old;");
+                Execute(conn, @"
+                    CREATE TABLE BillDescription (
+                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                        Bill_id     INTEGER NOT NULL,
+                        ItemId      TEXT    NOT NULL,
+                        Quantity    REAL    NOT NULL,
+                        UnitPrice   REAL    NOT NULL,
+                        TotalPrice  REAL    NOT NULL,
+                        FOREIGN KEY (Bill_id) REFERENCES Bill(bill_id) ON DELETE CASCADE,
+                        FOREIGN KEY (ItemId)  REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
+                    );
+                ");
+                Execute(conn, @"
+                    INSERT INTO BillDescription (id, Bill_id, ItemId, Quantity, UnitPrice, TotalPrice)
+                    SELECT id, Bill_id, ItemId, Quantity, UnitPrice, TotalPrice FROM BillDescription_old;
+                ");
+                Execute(conn, "DROP TABLE BillDescription_old;");
+
+                // -- Migrate BILL_RETURNS --
+                Execute(conn, "ALTER TABLE BILL_RETURNS RENAME TO BILL_RETURNS_old;");
+                Execute(conn, @"
+                    CREATE TABLE BILL_RETURNS (
+                        Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        bill_id             INTEGER NOT NULL,
+                        product_id          TEXT NOT NULL,
+                        return_quantity     INTEGER NOT NULL,
+                        original_bill_date  TEXT NOT NULL,
+                        return_date         TEXT NOT NULL,
+                        return_bill_id      TEXT NOT NULL,
+                        FOREIGN KEY (bill_id)    REFERENCES Bill(bill_id) ON DELETE CASCADE,
+                        FOREIGN KEY (product_id) REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
+                    );
+                ");
+                Execute(conn, @"
+                    INSERT INTO BILL_RETURNS (Id, bill_id, product_id, return_quantity, original_bill_date, return_date, return_bill_id)
+                    SELECT Id, bill_id, product_id, return_quantity, original_bill_date, return_date, return_bill_id FROM BILL_RETURNS_old;
+                ");
+                Execute(conn, "DROP TABLE BILL_RETURNS_old;");
+
+                // -- Recreate Indexes --
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_BillId        ON BillDescription(Bill_id);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_ItemId        ON BillDescription(ItemId);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_BillId     ON BILL_RETURNS(bill_id);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_ProductId  ON BILL_RETURNS(product_id);");
+
+                transaction.Commit();
+                AppLogger.Info("DatabaseInitializer: Cascade foreign keys migrated successfully.");
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                AppLogger.Error("DatabaseInitializer: Cascade foreign keys migration failed", ex);
+            }
+            finally
+            {
                 Execute(conn, "PRAGMA foreign_keys = ON;");
             }
         }

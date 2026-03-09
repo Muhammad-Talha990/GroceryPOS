@@ -16,6 +16,7 @@ namespace GroceryPOS.ViewModels
     public class CustomerManagementViewModel : BaseViewModel
     {
         private readonly CustomerService _customerService;
+        private readonly IStockService _stockService;
 
         // ── Collections ──
         public ObservableCollection<Customer> AllCustomers { get; } = new();
@@ -140,9 +141,13 @@ namespace GroceryPOS.ViewModels
 
         public ICommand ViewLedgerCommand { get; }
 
-        public CustomerManagementViewModel(CustomerService customerService)
+        public CustomerManagementViewModel(CustomerService customerService, IStockService stockService)
         {
             _customerService = customerService;
+            _stockService = stockService;
+
+            // Real-time refresh when returns or payments are recorded
+            _stockService.StockChanged += () => Dispatch(LoadCustomers);
 
             RefreshCommand     = new RelayCommand(_ => LoadCustomers());
             AddCommand         = new RelayCommand(_ => OpenAddDialog());
@@ -348,6 +353,11 @@ namespace GroceryPOS.ViewModels
             OnPropertyChanged(nameof(StatusMessage));
         }
 
-        public override void Dispose() => base.Dispose();
+        public override void Dispose()
+        {
+            if (_stockService != null)
+                _stockService.StockChanged -= () => Dispatch(LoadCustomers);
+            base.Dispose();
+        }
     }
 }

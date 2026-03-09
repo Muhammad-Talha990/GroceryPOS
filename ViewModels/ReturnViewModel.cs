@@ -48,6 +48,39 @@ namespace GroceryPOS.ViewModels
             set => SetProperty(ref _isPreviewVisible, value);
         }
 
+        // ── Return Outcome Result (populated after ProcessReturn) ──
+        private double _returnResultCashRefund;
+        public double ReturnResultCashRefund
+        {
+            get => _returnResultCashRefund;
+            set
+            {
+                if (SetProperty(ref _returnResultCashRefund, value))
+                    OnPropertyChanged(nameof(ShowCashRefundRow));
+            }
+        }
+
+        private double _returnResultCreditAdjusted;
+        public double ReturnResultCreditAdjusted
+        {
+            get => _returnResultCreditAdjusted;
+            set
+            {
+                if (SetProperty(ref _returnResultCreditAdjusted, value))
+                    OnPropertyChanged(nameof(ShowCreditAdjustRow));
+            }
+        }
+
+        private string _returnResultType = string.Empty;
+        public string ReturnResultType
+        {
+            get => _returnResultType;
+            set => SetProperty(ref _returnResultType, value);
+        }
+
+        public bool ShowCashRefundRow    => ReturnResultCashRefund > 0;
+        public bool ShowCreditAdjustRow  => ReturnResultCreditAdjusted > 0;
+
         public string StoreName => "GROCERY MART";
         public string StoreAddress => "123 Main Street, City Name";
         public string StorePhone => "0300-1234567";
@@ -60,6 +93,18 @@ namespace GroceryPOS.ViewModels
         // ── Preview Calculation Properties ──
         public decimal CurrentReturnGrandTotal => Items.Sum(i => (decimal)i.ReturnQuantity * (decimal)(OriginalBill?.Items.FirstOrDefault(bi => bi.ItemId == i.ItemId)?.UnitPrice ?? 0));
         
+        public double PreviewRemainingDue
+        {
+            get
+            {
+                if (OriginalBill == null) return 0;
+                double previousReturnsTotal = ReturnHistory.Sum(r => (double)r.ReturnQuantity * (OriginalBill.Items.FirstOrDefault(bi => bi.ItemId == r.ProductId)?.UnitPrice ?? 0));
+                // Note: result.Returns in SearchBill would be more accurate if we kept the raw Bill objects,
+                // but ReturnHistory is already populated from them.
+                return OriginalBill.GrandTotal - previousReturnsTotal - (double)CurrentReturnGrandTotal;
+            }
+        }
+
         public ObservableCollection<ReturnItemViewModel> CurrentReturnPreviewItems { get; } = new();
 
         public void RefreshPreview()
@@ -70,6 +115,7 @@ namespace GroceryPOS.ViewModels
                 CurrentReturnPreviewItems.Add(item);
             }
             OnPropertyChanged(nameof(CurrentReturnGrandTotal));
+            OnPropertyChanged(nameof(PreviewRemainingDue));
         }
 
         public ReturnViewModel(IReturnService returnService, AuthService authService, PrintService printService)
@@ -170,7 +216,25 @@ namespace GroceryPOS.ViewModels
             {
                 StatusMessage = "Processing return...";
                 var returnBill = await _returnService.ProcessReturn(OriginalBill.BillId, _authService.CurrentUser?.Id, itemsToReturn);
-                StatusMessage = $"✓ Return processed! Return Bill: {returnBill.InvoiceNumber}";
+
+                // ── Populate result properties from return bill metadata ──
+                double cashRefund       = returnBill.CashReceived;
+                double creditAdjusted   = returnBill.RemainingAmount; // repurposed field from service
+                string outcomeType      = returnBill.Status; // "CashOnly" | "CreditOnly" | "Mixed"
+
+                ReturnResultCashRefund    = cashRefund;
+                ReturnResultCreditAdjusted = creditAdjusted;
+                ReturnResultType          = outcomeType;
+
+                // Build descriptive success message
+                string msg = outcomeType switch
+                {
+                    "CreditOnly" => $"✓ Return Bill #{returnBill.InvoiceNumber} — Credit reduced by Rs.{creditAdjusted:N0}. No cash refund.",
+                    "CashOnly"   => $"✓ Return Bill #{returnBill.InvoiceNumber} — Cash refund: Rs.{cashRefund:N0}",
+                    "Mixed"      => $"✓ Return Bill #{returnBill.InvoiceNumber} — Credit reduced Rs.{creditAdjusted:N0} + Cash refund Rs.{cashRefund:N0}",
+                    _            => $"✓ Return processed! Return Bill: {returnBill.InvoiceNumber}"
+                };
+                StatusMessage = msg;
                 
                 // ── Automated Unified Printing ──
                 try

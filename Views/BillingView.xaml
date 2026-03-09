@@ -15,6 +15,7 @@
         <converters:StringToVisibilityConverter x:Key="StringToVis"/>
         <converters:NullToVisibilityConverter x:Key="NullToVis"/>
         <converters:NumericToVisibilityConverter x:Key="NumToVis"/>
+        <converters:StatusColorConverter x:Key="StatusColorConverter"/>
     </UserControl.Resources>
     <Grid Margin="15,8">
         <Grid.ColumnDefinitions>
@@ -220,15 +221,48 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="ADDRESS:" Foreground="#BBFFFFFF" FontSize="10" FontWeight="Black" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableAddresses}"
-                                                  SelectedItem="{Binding SelectedBillingAddress}"
-                                                  Background="#1AFFFFFF" BorderThickness="0" Foreground="Black"
-                                                  Height="26" VerticalAlignment="Center"
-                                                  Visibility="{Binding AvailableAddresses.Count, Converter={StaticResource CountToVis}}"/>
-                                        <TextBlock Grid.Column="1" Text="No address stored." 
-                                                   Foreground="#99FFFFFF" FontSize="11" FontStyle="Italic"
-                                                   VerticalAlignment="Center"
-                                                   Visibility="{Binding AvailableAddresses.Count, Converter={StaticResource InverseCountToVis}}"/>
+                                        
+                                        <!-- Normal State (Selecting Address or "No address") -->
+                                        <Grid Grid.Column="1" Visibility="{Binding IsAddingAddress, Converter={StaticResource InvBoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ComboBox ItemsSource="{Binding AvailableAddresses}"
+                                                      SelectedItem="{Binding SelectedBillingAddress}"
+                                                      Background="#1AFFFFFF" BorderThickness="0" Foreground="Black"
+                                                      Height="26" VerticalAlignment="Center"
+                                                      Visibility="{Binding AvailableAddresses.Count, Converter={StaticResource CountToVis}}"/>
+                                            <TextBlock Text="No address stored." 
+                                                       Foreground="#99FFFFFF" FontSize="11" FontStyle="Italic"
+                                                       VerticalAlignment="Center" Margin="4,0,0,0"
+                                                       Visibility="{Binding AvailableAddresses.Count, Converter={StaticResource InverseCountToVis}}"/>
+                                            <!-- Add New Button -->
+                                            <Button Grid.Column="1" Content="➕ Add New"
+                                                    Command="{Binding AddAddressCommand}"
+                                                    Background="#10B981" BorderBrush="#059669" BorderThickness="1"
+                                                    Foreground="White" FontSize="10" FontWeight="Bold"
+                                                    Padding="8,0" Margin="8,0,0,0" Height="26"/>
+                                        </Grid>
+
+                                        <!-- Add New Address State -->
+                                        <Grid Grid.Column="1" Visibility="{Binding IsAddingAddress, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Text="{Binding NewAddressInput, UpdateSourceTrigger=PropertyChanged}" 
+                                                     Height="26" VerticalContentAlignment="Center" Background="#1AFFFFFF" Foreground="White" BorderThickness="1" BorderBrush="#3B82F6"/>
+                                            <Button Grid.Column="1" Content="Save" 
+                                                    Command="{Binding SaveAddressCommand}"
+                                                    Background="#3B82F6" BorderBrush="#2563EB" BorderThickness="1"
+                                                    Foreground="White" Padding="8,0" Margin="4,0,0,0" Height="26" FontSize="10" FontWeight="Bold"/>
+                                            <Button Grid.Column="2" Content="Cancel" 
+                                                    Command="{Binding CancelAddAddressCommand}"
+                                                    Background="#4B5563" BorderBrush="#374151" BorderThickness="1"
+                                                    Foreground="White" Padding="8,0" Margin="4,0,0,0" Height="26" FontSize="10" FontWeight="Bold"/>
+                                        </Grid>
                                     </Grid>
 
                                     <!-- ── Bill Action Strip (shows whenever any bill is selected) ── -->
@@ -435,12 +469,21 @@
                               SelectedItem="{Binding SelectedCartItem}"
                               Style="{DynamicResource ModernDataGrid}"
                               ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}"
-                              RowStyle="{DynamicResource ModernDataGridRow}"
                               CellStyle="{DynamicResource ModernDataGridCell}"
                               Margin="0,0,0,0"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False"
                               IsReadOnly="False">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow" BasedOn="{StaticResource ModernDataGridRow}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCopied}" Value="True">
+                                        <Setter Property="Background" Value="#DCFCE7"/> <!-- Light Green -->
+                                        <Setter Property="BorderBrush" Value="#86EFAC"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
                         <DataGrid.InputBindings>
                             <KeyBinding Key="Return" Command="{Binding FinishCartEditCommand}"/>
                         </DataGrid.InputBindings>
@@ -453,6 +496,12 @@
                                     <Style TargetType="TextBlock">
                                         <Setter Property="HorizontalAlignment" Value="Center"/>
                                         <Setter Property="VerticalAlignment" Value="Center"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsMaxQuantity}" Value="True">
+                                                <Setter Property="Foreground" Value="#EF4444"/>
+                                                <Setter Property="FontWeight" Value="Bold"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                                 <DataGridTextColumn.EditingElementStyle>
@@ -460,6 +509,12 @@
                                         <Setter Property="helpers:FocusHelper.SelectAllOnFocus" Value="True"/>
                                         <Setter Property="HorizontalContentAlignment" Value="Center"/>
                                         <Setter Property="Padding" Value="2,4"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsMaxQuantity}" Value="True">
+                                                <Setter Property="Foreground" Value="#EF4444"/>
+                                                <Setter Property="FontWeight" Value="Bold"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
                                     </Style>
                                 </DataGridTextColumn.EditingElementStyle>
                             </DataGridTextColumn>
@@ -560,7 +615,7 @@
 
                     <!-- Status -->
                     <TextBlock Text="{Binding StatusMessage}" FontSize="13" FontWeight="Medium"
-                               Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Margin="0,0,0,16"
+                               Foreground="{Binding StatusMessage, Converter={StaticResource StatusColorConverter}}" TextWrapping="Wrap" Margin="0,0,0,16"
                                HorizontalAlignment="Center" TextAlignment="Center"/>
 
                     <!-- Buttons -->
@@ -796,7 +851,8 @@
                         <TextBox Grid.Column="0" Text="{Binding HistoryPaymentAmount, UpdateSourceTrigger=PropertyChanged}"
                                  Background="#0F172A" Foreground="White" FontSize="22" FontWeight="Bold"
                                  Padding="12,10" BorderBrush="#334155" BorderThickness="1" CaretBrush="White"
-                                 helpers:FocusHelper.NumericOnly="True"/>
+                                 helpers:FocusHelper.DecimalOnly="True"
+                                 helpers:FocusHelper.IsFocused="{Binding IsHistoryPaymentOpen}"/>
                         <Button Grid.Column="1" Content="Pay Full" Command="{Binding PayFullHistoryCommand}"
                                 Foreground="#60A5FA" Background="#334155" Padding="12,10" Margin="8,0,0,0"
                                 BorderThickness="1" BorderBrush="#475569" FontSize="12" Cursor="Hand">
@@ -881,5 +937,21 @@
                 </DockPanel>
             </Border>
         </Border>
+
+        <!-- ═══ SYSTEM ERROR OVERLAY (OUT OF STOCK) ═══ -->
+        <Border Grid.ColumnSpan="3" Panel.ZIndex="3000" IsHitTestVisible="False"
+                VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,40,0,0"
+                Visibility="{Binding SystemErrorVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+            <Border Background="White" CornerRadius="8" Padding="20,12"
+                    BorderBrush="#EF4444" BorderThickness="2">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.15" Color="Black"/>
+                </Border.Effect>
+                <TextBlock Text="{Binding SystemErrorMessage}" 
+                           Foreground="#EF4444" FontSize="20" FontWeight="Bold" 
+                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Border>
+        </Border>
+
     </Grid>
 </UserControl>

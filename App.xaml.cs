@@ -91,7 +91,6 @@ public partial class App : Application
         services.AddSingleton<ReportsViewModel>();
         services.AddSingleton<SupplierBillsViewModel>();
         services.AddSingleton<ReturnViewModel>();
-        services.AddSingleton<PendingPrintsViewModel>();
         services.AddSingleton<CustomerManagementViewModel>();
         services.AddSingleton<CustomerLedgerViewModel>();
 

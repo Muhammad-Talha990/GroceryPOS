@@ -16,8 +16,23 @@ namespace GroceryPOS.Models
         /// <summary>Unit price at time of adding to cart.</summary>
         public double UnitPrice { get; set; }
 
+        private double _availableStock;
         /// <summary>Maximum available stock for this item.</summary>
-        public double AvailableStock { get; set; }
+        public double AvailableStock
+        {
+            get => _availableStock;
+            set
+            {
+                if (_availableStock != value)
+                {
+                    _availableStock = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AvailableStock)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMaxQuantity)));
+                }
+            }
+        }
+
+        public bool IsMaxQuantity => Quantity >= AvailableStock && AvailableStock > 0;
 
         private int _quantity = 1;
         /// <summary>Quantity in cart.</summary>
@@ -26,14 +41,33 @@ namespace GroceryPOS.Models
             get => _quantity;
             set
             {
-                _quantity = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Quantity)));
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TotalPrice)));
+                if (_quantity != value)
+                {
+                    _quantity = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Quantity)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TotalPrice)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMaxQuantity)));
+                }
             }
         }
 
         /// <summary>Line total: UnitPrice × Quantity.</summary>
         public double TotalPrice => UnitPrice * Quantity;
+
+        private bool _isCopied;
+        /// <summary>Indicates if this item was copied from a previous bill.</summary>
+        public bool IsCopied
+        {
+            get => _isCopied;
+            set
+            {
+                if (_isCopied != value)
+                {
+                    _isCopied = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCopied)));
+                }
+            }
+        }
 
         public event PropertyChangedEventHandler? PropertyChanged;
     }

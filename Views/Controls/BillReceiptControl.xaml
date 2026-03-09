@@ -7,7 +7,11 @@
     <UserControl.Resources>
         <converters:NumericToVisibilityConverter x:Key="NumToVis"/>
         <converters:StringToVisibilityConverter x:Key="StringToVis"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVis"/>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InvBoolToVis"/>
+        <converters:AbsoluteValueConverter x:Key="AbsConv"/>
+        <converters:CountToVisibilityConverter x:Key="CountToVis"/>
     </UserControl.Resources>
 
     <!-- The entire receipt rendered on a white "paper" background -->
@@ -17,6 +21,11 @@
             <!-- ═══ STORE HEADER ═══ -->
             <TextBlock Text="GROCERY MART" FontSize="20" FontWeight="Bold" 
                        HorizontalAlignment="Center" Foreground="#1E293B" FontFamily="Consolas"/>
+            
+            <TextBlock Text="--- RETURN RECEIPT ---" FontSize="11" FontWeight="Bold"
+                       HorizontalAlignment="Center" Foreground="#1E293B" FontFamily="Consolas"
+                       Visibility="{Binding IsReturn, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0"/>
+
             <TextBlock Text="123 Main Street, City Name" FontSize="10" 
                        HorizontalAlignment="Center" Foreground="#64748B" Margin="0,4" FontFamily="Consolas"/>
             <TextBlock Text="Ph: 0300-1234567" FontSize="10" 
@@ -30,16 +39,16 @@
             <Grid Margin="0,0,0,4">
                 <StackPanel>
                     <TextBlock FontSize="11" Foreground="#1E293B" FontFamily="Consolas">
-                        <Run Text="Receipt#: "/><Run Text="{Binding InvoiceNumber, Mode=OneWay}" FontWeight="Bold"/>
+                        <Run Text="{Binding Type, Mode=OneWay}"/><Run Text=" Receipt#: "/><Run Text="{Binding InvoiceNumber, Mode=OneWay}" FontWeight="Bold"/>
+                    </TextBlock>
+                    <TextBlock FontSize="10" Foreground="#334155" FontFamily="Consolas" Margin="0,2,0,0"
+                               Visibility="{Binding ParentBill, Converter={StaticResource NullToVis}}">
+                        <Run Text="Original Bill#: "/><Run Text="{Binding ParentBill.InvoiceNumber, Mode=OneWay}" FontWeight="Bold"/>
                     </TextBlock>
                     <!-- Customer only shown for registered customers -->
                     <TextBlock FontSize="10" Foreground="#334155" FontFamily="Consolas" Margin="0,2,0,0"
                                Visibility="{Binding Customer.FullName, Converter={StaticResource StringToVis}}">
                         <Run Text="Cust: "/><Run Text="{Binding Customer.FullName, Mode=OneWay}" FontWeight="SemiBold"/>
-                    </TextBlock>
-                    <TextBlock FontSize="10" Foreground="#64748B" FontFamily="Consolas" TextWrapping="Wrap"
-                               Visibility="{Binding BillingAddress, Converter={StaticResource StringToVis}}">
-                        <Run Text="Addr: "/><Run Text="{Binding BillingAddress, Mode=OneWay}"/>
                     </TextBlock>
                     <TextBlock FontSize="10" Foreground="#334155" FontFamily="Consolas" Margin="0,2,0,0">
                         <Run Text="Date: "/><Run Text="{Binding BillDateTime, StringFormat='{}{0:dd MMM yyyy  HH:mm}', Mode=OneWay}"/>
@@ -50,9 +59,89 @@
                            Padding="8,3" FontFamily="Consolas"/>
             </Grid>
 
+            <!-- ═══ ORIGINAL SALE DETAILS (If Return) ═══ -->
+            <StackPanel Visibility="{Binding IsReturn, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                           HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,8"/>
+                <TextBlock Text="ORIGINAL SALE DETAILS" FontSize="10" FontWeight="Bold" Foreground="#1E293B" FontFamily="Consolas"/>
+                
+                <Grid Margin="0,4,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="40"/>
+                        <ColumnDefinition Width="55"/>
+                        <ColumnDefinition Width="70"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Item" FontSize="9" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas"/>
+                    <TextBlock Grid.Column="1" Text="Qty" FontSize="9" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas" HorizontalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" Text="Price" FontSize="9" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas" HorizontalAlignment="Center"/>
+                    <TextBlock Grid.Column="3" Text="Total" FontSize="9" FontWeight="Bold" Foreground="#64748B" FontFamily="Consolas" HorizontalAlignment="Right"/>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding ParentBill.Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="40"/>
+                                    <ColumnDefinition Width="55"/>
+                                    <ColumnDefinition Width="70"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding ItemDescription}" FontSize="9" Foreground="#334155" TextWrapping="Wrap" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Quantity}" FontSize="9" Foreground="#334155" HorizontalAlignment="Center" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat='{}{0:N0}'}" FontSize="9" Foreground="#64748B" HorizontalAlignment="Center" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="3" Text="{Binding TotalPrice, StringFormat='{}{0:N0}'}" FontSize="9" Foreground="#334155" HorizontalAlignment="Right" FontFamily="Consolas"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding ParentBill.GrandTotal, StringFormat='Orig Total: Rs.{0:N2}'}" FontSize="10" FontWeight="Bold" 
+                           HorizontalAlignment="Right" Margin="0,4,0,0" FontFamily="Consolas"/>
+            </StackPanel>
+
+            <!-- ═══ PREVIOUS RETURNS (If any) ═══ -->
+            <StackPanel Visibility="{Binding ReturnHistory.Count, Converter={StaticResource CountToVis}}">
+                <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                           HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,8"/>
+                <TextBlock Text="PREVIOUS RETURNS" FontSize="10" FontWeight="Bold" Foreground="#1E293B" FontFamily="Consolas"/>
+                
+                <ItemsControl ItemsSource="{Binding ReturnHistory}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,4">
+                                <TextBlock FontSize="9" Foreground="#64748B" FontFamily="Consolas">
+                                    <Run Text="Return #"/><Run Text="{Binding InvoiceNumber}"/>
+                                    <Run Text=" ("/><Run Text="{Binding BillDateTime, StringFormat='dd/MM HH:mm'}"/><Run Text=")"/>
+                                </TextBlock>
+                                <ItemsControl ItemsSource="{Binding Items}" Margin="10,2,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="40"/>
+                                                    <ColumnDefinition Width="70"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding ItemDescription}" FontSize="9" Foreground="#475569" TextWrapping="Wrap" FontFamily="Consolas"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Quantity, Converter={StaticResource AbsConv}}" FontSize="9" Foreground="#475569" HorizontalAlignment="Center" FontFamily="Consolas"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding TotalPrice, Converter={StaticResource AbsConv}, StringFormat='{}{0:N0}'}" FontSize="9" Foreground="#475569" HorizontalAlignment="Right" FontFamily="Consolas"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
             <!-- Items Header Divider -->
             <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
                        HorizontalAlignment="Center" Foreground="#CBD5E1" Margin="0,8"/>
+
+            <TextBlock Text="RETURNED ITEMS (THIS RETURN)" FontSize="10" FontWeight="Bold" Foreground="#1E293B" FontFamily="Consolas"
+                       Visibility="{Binding IsReturn, Converter={StaticResource BoolToVis}}"/>
 
             <!-- ═══ ITEMS TABLE HEADER ═══ -->
             <Grid Margin="0,4,0,4">
@@ -84,11 +173,11 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding ItemDescription}" FontSize="10" Foreground="#1E293B" 
                                        TextWrapping="Wrap" FontFamily="Consolas"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Quantity}" FontSize="10" Foreground="#1E293B" 
+                            <TextBlock Grid.Column="1" Text="{Binding Quantity, Converter={StaticResource AbsConv}}" FontSize="10" Foreground="#1E293B" 
                                        HorizontalAlignment="Center" VerticalAlignment="Top" FontFamily="Consolas"/>
                             <TextBlock Grid.Column="2" Text="{Binding UnitPrice, StringFormat='{}{0:N0}'}" FontSize="10" 
                                        Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Top" FontFamily="Consolas"/>
-                            <TextBlock Grid.Column="3" Text="{Binding TotalPrice, StringFormat='{}{0:N0}'}" FontSize="10" 
+                            <TextBlock Grid.Column="3" Text="{Binding TotalPrice, Converter={StaticResource AbsConv}, StringFormat='{}{0:N0}'}" FontSize="10" 
                                        Foreground="#1E293B" HorizontalAlignment="Right" VerticalAlignment="Top" 
                                        FontWeight="SemiBold" FontFamily="Consolas"/>
                         </Grid>
@@ -103,19 +192,14 @@
             <!-- ═══ TOTALS SECTION ═══ -->
             <StackPanel HorizontalAlignment="Right" Width="200">
                 <Grid Margin="0,3">
-                    <TextBlock Text="Sub Total:" FontSize="10" Foreground="#334155" FontFamily="Consolas" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding SubTotal, StringFormat='Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
+                    <TextBlock Text="{Binding Type, StringFormat='{}{0} Total:'}" FontSize="10" Foreground="#334155" FontFamily="Consolas" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding SubTotal, Converter={StaticResource AbsConv}, StringFormat='Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
                                Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
                 </Grid>
-                <Grid Margin="0,2">
+                <Grid Margin="0,2" Visibility="{Binding DiscountAmount, Converter={StaticResource NumToVis}}">
                     <TextBlock Text="Discount:" FontSize="10" Foreground="#334155" FontFamily="Consolas"/>
-                    <TextBlock Text="{Binding DiscountAmount, StringFormat='-Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
+                    <TextBlock Text="{Binding DiscountAmount, Converter={StaticResource AbsConv}, StringFormat='-Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
                                Foreground="#EF4444" FontFamily="Consolas"/>
-                </Grid>
-                <Grid Margin="0,2" Visibility="{Binding TaxAmount, Converter={StaticResource NumToVis}}">
-                    <TextBlock Text="Tax:" FontSize="10" Foreground="#334155" FontFamily="Consolas"/>
-                    <TextBlock Text="{Binding TaxAmount, StringFormat='Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
-                               Foreground="#1E293B" FontFamily="Consolas"/>
                 </Grid>
 
                 <!-- Double divider before grand total -->
@@ -123,37 +207,73 @@
                            Foreground="#94A3B8" Margin="0,6"/>
 
                 <Grid Margin="0,4">
-                    <TextBlock Text="GRAND TOTAL:" FontSize="12" Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding GrandTotal, StringFormat='Rs.{0:N0}'}" FontSize="12" HorizontalAlignment="Right" 
+                    <TextBlock Text="RETURN VALUE:" FontSize="12" Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"
+                               Visibility="{Binding IsReturn, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="GRAND TOTAL:" FontSize="12" Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"
+                               Visibility="{Binding IsReturn, Converter={StaticResource InvBoolToVis}}"/>
+                    <TextBlock Text="{Binding GrandTotal, Converter={StaticResource AbsConv}, StringFormat='Rs.{0:N0}'}" FontSize="12" HorizontalAlignment="Right" 
                                Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
                 </Grid>
 
-                <!-- Payment details -->
-                <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
-                           Foreground="#CBD5E1" Margin="0,6"/>
-
-                <Grid Margin="0,2">
-                    <TextBlock Text="Cash Received:" FontSize="10" Foreground="#64748B" FontFamily="Consolas"/>
-                    <TextBlock Text="{Binding CashReceived, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
-                               Foreground="#1E293B" FontFamily="Consolas"/>
-                </Grid>
-                <Grid Margin="0,2">
-                    <TextBlock Text="Change:" FontSize="10" Foreground="#64748B" FontFamily="Consolas"/>
-                    <TextBlock Text="{Binding ChangeGiven, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
-                               Foreground="#1E293B" FontFamily="Consolas"/>
-                </Grid>
-
-                <!-- Credit/Due info (only if has pending credit) -->
-                <Grid Margin="0,2" Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Paid Amount:" FontSize="10" Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding PaidAmount, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
-                               Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
-                </Grid>
-                <Grid Margin="0,2" Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="DUE AMOUNT:" FontSize="10" Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding RemainingAmount, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                <!-- NEW: Remaining Due Amount -->
+                <Grid Margin="0,2" Visibility="{Binding IsReturn, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="REMAINING DUE:" FontSize="10" Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding RemainingDueAfterThisReturn, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
                                Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
                 </Grid>
+
+                <!-- Payment details (Only for Sales) -->
+                <StackPanel Visibility="{Binding IsReturn, Converter={StaticResource InvBoolToVis}}">
+                    <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                               Foreground="#CBD5E1" Margin="0,6"/>
+
+                    <Grid Margin="0,2">
+                        <TextBlock Text="Cash Received:" FontSize="10" Foreground="#64748B" FontFamily="Consolas"/>
+                        <TextBlock Text="{Binding CashReceived, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                                   Foreground="#1E293B" FontFamily="Consolas"/>
+                    </Grid>
+                    <Grid Margin="0,2">
+                        <TextBlock Text="Change:" FontSize="10" Foreground="#64748B" FontFamily="Consolas"/>
+                        <TextBlock Text="{Binding ChangeGiven, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                                   Foreground="#1E293B" FontFamily="Consolas"/>
+                    </Grid>
+
+                    <Grid Margin="0,2" Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Grid Margin="0,2">
+                                <TextBlock Text="Paid Amount:" FontSize="10" Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding PaidAmount, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                                           Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,2">
+                                <TextBlock Text="DUE AMOUNT:" FontSize="10" Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding RemainingAmount, StringFormat='Rs.{0:N0}'}" FontSize="10" HorizontalAlignment="Right" 
+                                           Foreground="#DC2626" FontFamily="Consolas" FontWeight="Bold"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Return Outcomes (If Return) -->
+                <StackPanel Visibility="{Binding IsReturn, Converter={StaticResource BoolToVis}}">
+                     <TextBlock Text="------------------------------------------" FontSize="9" FontFamily="Consolas"
+                                Foreground="#CBD5E1" Margin="0,6"/>
+                     <!-- Based on PrintService logic: repurpose RemainingAmount for CreditOffset and CashReceived for refund -->
+                     <Grid Margin="0,2" Visibility="{Binding RemainingAmount, Converter={StaticResource NumToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="ADJUSTED AGAINST CREDIT:" FontSize="10" Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding RemainingAmount, StringFormat='Rs.{0:N2}'}" FontSize="10" HorizontalAlignment="Right" 
+                                       Foreground="#1E293B" FontFamily="Consolas" FontWeight="Bold"/>
+                            <TextBlock Text="(No cash refund for this portion)" FontSize="8" Foreground="#64748B" HorizontalAlignment="Right" FontFamily="Consolas" Margin="0,2,0,0"/>
+                        </StackPanel>
+                     </Grid>
+                     <Grid Margin="0,4" Visibility="{Binding CashReceived, Converter={StaticResource NumToVis}}">
+                         <TextBlock Text="CASH REFUNDED:" FontSize="11" Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
+                         <TextBlock Text="{Binding CashReceived, StringFormat='Rs.{0:N2}'}" FontSize="11" HorizontalAlignment="Right" 
+                                    Foreground="#059669" FontFamily="Consolas" FontWeight="Bold"/>
+                     </Grid>
+                </StackPanel>
             </StackPanel>
 
             <!-- Footer Divider -->

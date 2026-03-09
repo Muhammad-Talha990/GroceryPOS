@@ -219,46 +219,20 @@ namespace GroceryPOS.ViewModels
                 if (SelectedProduct == null) { StatusMessage = "Please select an item to update."; return; }
                 if (!ValidateForm()) return;
 
-                // If barcode changed, we need to delete old + add new (PK change)
                 var newBarcode = FormBarcode.Trim();
-                if (_originalBarcode != null && _originalBarcode != newBarcode)
+                var item = new Item
                 {
-                    // Check if new barcode already exists
-                    var existing = _itemService.GetItemByBarcode(newBarcode);
-                    if (existing != null)
-                    {
-                        StatusMessage = $"✗ Barcode '{newBarcode}' already exists ({existing.Description}).";
-                        return;
-                    }
+                    ItemId = newBarcode,
+                    Description = FormName.Trim(),
+                    CostPrice = double.Parse(FormCostPrice),
+                    SalePrice = double.Parse(FormSalePrice),
+                    ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
+                    StockQuantity = double.Parse(FormStockQuantity), // Preserve current stock
+                    MinStockThreshold = double.Parse(FormMinStockThreshold)
+                };
 
-                    // Delete old, add new
-                    _itemService.DeleteItem(_originalBarcode);
-                    var newItem = new Item
-                    {
-                        ItemId = newBarcode,
-                        Description = FormName.Trim(),
-                        CostPrice = double.Parse(FormCostPrice),
-                        SalePrice = double.Parse(FormSalePrice),
-                        ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
-                        StockQuantity = double.Parse(FormStockQuantity), // Preserve current stock even on barcode change
-                        MinStockThreshold = double.Parse(FormMinStockThreshold)
-                    };
-                    _itemService.AddItem(newItem);
-                }
-                else
-                {
-                    var item = new Item
-                    {
-                        ItemId = newBarcode,
-                        Description = FormName.Trim(),
-                        CostPrice = double.Parse(FormCostPrice),
-                        SalePrice = double.Parse(FormSalePrice),
-                        ItemCategory = string.IsNullOrWhiteSpace(FormCategory) ? null : FormCategory.Trim(),
-                        StockQuantity = double.Parse(FormStockQuantity), // Set current stock to keep cache consistent
-                        MinStockThreshold = double.Parse(FormMinStockThreshold)
-                    };
-                    _itemService.UpdateItem(item);
-                }
+                // Update using original barcode (handles PK change if any via ON UPDATE CASCADE)
+                _itemService.UpdateItem(item, _originalBarcode);
 
                 StatusMessage = $"✓ Item '{FormName}' updated!";
                 ClearForm();
@@ -277,15 +251,19 @@ namespace GroceryPOS.ViewModels
         {
             if (SelectedProduct == null) { StatusMessage = "Please select an item to delete."; return; }
 
-            var result = MessageBox.Show($"Are you sure you want to delete '{SelectedProduct.Description}'?\n\nWarning: This will permanently remove the item from the database.",
+            // Capture item details BEFORE deletion, because UI might null SelectedProduct when collection changes
+            string itemId = SelectedProduct.ItemId;
+            string description = SelectedProduct.Description;
+
+            var result = MessageBox.Show($"Are you sure you want to delete '{description}'?\n\nWarning: This will permanently remove the item from the database.",
                 "Confirm Permanent Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
             if (result == MessageBoxResult.Yes)
             {
                 try
                 {
-                    _itemService.DeleteItem(SelectedProduct.ItemId);
-                    StatusMessage = $"✓ Item '{SelectedProduct.Description}' permanently deleted.";
+                    _itemService.DeleteItem(itemId);
+                    StatusMessage = $"✓ Item '{description}' permanently deleted.";
                     ClearForm();
                     LoadProducts();
                     LoadCategories();

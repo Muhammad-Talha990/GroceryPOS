@@ -67,12 +67,25 @@ namespace GroceryPOS.Services
         }
 
         /// <summary>Updates an existing item after validation.</summary>
-        public void UpdateItem(Item item)
+        public void UpdateItem(Item item, string originalBarcode = null)
         {
             ValidateItem(item);
-            _repo.Update(item);
+            
+            // if we are changing the barcode, check for collisions
+            if (!string.IsNullOrEmpty(originalBarcode) && originalBarcode != item.ItemId)
+            {
+               var existing = _cache.GetItemByBarcode(item.ItemId);
+               if (existing != null)
+                   throw new InvalidOperationException($"An item with barcode '{item.ItemId}' already exists.");
+            }
 
-            // Sync Cache
+            _repo.Update(item, originalBarcode);
+
+            // Sync Cache - if the barcode changed, remove the old one first
+            if (!string.IsNullOrEmpty(originalBarcode) && originalBarcode != item.ItemId)
+            {
+                _cache.RemoveItemFromCache(originalBarcode);
+            }
             _cache.UpdateItemInCache(item);
             _stockService.NotifyChanged();
         }

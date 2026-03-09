@@ -16,6 +16,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -68,31 +69,112 @@
 
                 <Button Grid.Column="4" Content="📥 Export CSV" Style="{DynamicResource PrimaryButton}"
                         Command="{Binding ExportReportCommand}" VerticalAlignment="Bottom" Padding="20,10"
-                        Margin="0,0,16,0"/>
+                        HorizontalAlignment="Right"/>
+            </Grid>
+        </Border>
 
-                <!-- Summary -->
-                <StackPanel Grid.Column="5" HorizontalAlignment="Right" Margin="0,0,12,0"
-                            Visibility="{Binding IsRevenueVisible, Converter={StaticResource BoolToVis}}">
-                    <TextBlock Text="Total Revenue" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
-                    <TextBlock FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}">
+        <!-- Financial Summary Cards -->
+        <Border Grid.Row="2" Style="{DynamicResource CardBorder}" Padding="20,16" Margin="0,0,0,16" 
+                Background="{DynamicResource SidebarBgBrush}"
+                Visibility="{Binding ShowSalesGrid, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Total Sales -->
+                <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                    <TextBlock Text="Total Sales" FontSize="12" Foreground="White" Opacity="0.8" HorizontalAlignment="Center"/>
+                    <TextBlock FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,4,0,0">
                         <TextBlock.Text>
                             <Binding Path="TotalRevenue" StringFormat="Rs.{0:N0}"/>
                         </TextBlock.Text>
                     </TextBlock>
                 </StackPanel>
 
-                <StackPanel Grid.Column="6" HorizontalAlignment="Right">
-                    <TextBlock Text="Total Count" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
-                    <TextBlock Text="{Binding TotalSalesCount}" FontSize="20" FontWeight="Bold"
-                               Foreground="{DynamicResource AccentBrush}"/>
+                <!-- Returns -->
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                    <TextBlock Text="Returns" FontSize="12" Foreground="White" Opacity="0.8" HorizontalAlignment="Center"/>
+                    <TextBlock FontSize="22" FontWeight="Bold" Foreground="#FFAB91" HorizontalAlignment="Center" Margin="0,4,0,0">
+                        <TextBlock.Text>
+                            <Binding Path="TotalReturns" StringFormat="Rs.{0:N0}"/>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Net Sales -->
+                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                    <TextBlock Text="Net Sales" FontSize="12" Foreground="White" Opacity="0.8" HorizontalAlignment="Center"/>
+                    <TextBlock FontSize="22" FontWeight="Bold" Foreground="#80CBC4" HorizontalAlignment="Center" Margin="0,4,0,0">
+                        <TextBlock.Text>
+                            <Binding Path="NetSales" StringFormat="Rs.{0:N0}"/>
+                        </TextBlock.Text>
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Outstanding Credit -->
+                <StackPanel Grid.Column="3" HorizontalAlignment="Center">
+                    <TextBlock Text="Outstanding Credit" FontSize="12" Foreground="White" Opacity="0.8" HorizontalAlignment="Center"/>
+                    <TextBlock FontSize="22" FontWeight="Bold" Foreground="#EF9A9A" HorizontalAlignment="Center" Margin="0,4,0,0">
+                        <TextBlock.Text>
+                            <Binding Path="OutstandingCredit" StringFormat="Rs.{0:N0}"/>
+                        </TextBlock.Text>
+                    </TextBlock>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- Sales Report Grid -->
-        <Border Grid.Row="2" Style="{DynamicResource CardBorder}" Padding="0"
+        <Border Grid.Row="3" Style="{DynamicResource CardBorder}" Padding="0"
                 Visibility="{Binding ShowSalesGrid, Converter={StaticResource BoolToVis}}">
             <DockPanel>
+                <!-- Controls: Search & Filter -->
+                <Grid DockPanel.Dock="Top" Margin="16,16,16,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <StackPanel Grid.Column="0" HorizontalAlignment="Left">
+                        <TextBlock Text="Search Report History" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                        <Grid>
+                            <TextBox x:Name="SearchBox" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" 
+                                     Style="{DynamicResource ModernTextBox}"
+                                     Width="300" />
+                            <TextBlock Text="🔍 Invoice # or Customer Name..." 
+                                       IsHitTestVisible="False"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"
+                                       Foreground="{DynamicResource SubTextBrush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ElementName=SearchBox, Path=Text}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ElementName=SearchBox, Path=Text}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </StackPanel>
+                             
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                        <TextBlock Text="Filter by Bill Type" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding AvailableBillFilters}" 
+                                  SelectedItem="{Binding SelectedBillFilter}"
+                                  Style="{DynamicResource ModernComboBox}"
+                                  Width="180" 
+                                  VerticalContentAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+
                 <!-- Legend -->
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="16,10" HorizontalAlignment="Right">
                     <Border Background="#FEE2E2" Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0" BorderBrush="#FECACA" BorderThickness="1"/>

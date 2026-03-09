@@ -18,10 +18,29 @@ namespace GroceryPOS.ViewModels
         private readonly IStockService _stockService;
         private readonly PrintService _printService;
         private readonly AuthService _authService;
+        private readonly IReturnService _returnService;
 
         public ObservableCollection<Bill> SalesReport { get; set; } = new();
         public ObservableCollection<ReportItem> ProductReport { get; set; } = new();
         public ObservableCollection<Item> LowStockReport { get; set; } = new();
+
+        private List<Bill> _currentRawBills = new();
+
+        private string _searchQuery = "";
+        public string SearchQuery
+        {
+            get => _searchQuery;
+            set { if (SetProperty(ref _searchQuery, value)) ApplyFilters(); }
+        }
+
+        public List<string> AvailableBillFilters { get; } = new() { "All Bills", "Normal Bills", "Credit Bills", "Return Bills" };
+
+        private string _selectedBillFilter = "All Bills";
+        public string SelectedBillFilter
+        {
+            get => _selectedBillFilter;
+            set { if (SetProperty(ref _selectedBillFilter, value)) ApplyFilters(); }
+        }
 
         private DateTime _fromDate = DateTime.Today;
         public DateTime FromDate
@@ -74,6 +93,15 @@ namespace GroceryPOS.ViewModels
         private int _totalSalesCount;
         public int TotalSalesCount { get => _totalSalesCount; set => SetProperty(ref _totalSalesCount, value); }
 
+        private double _totalReturns;
+        public double TotalReturns { get => _totalReturns; set => SetProperty(ref _totalReturns, value); }
+
+        private double _netSales;
+        public double NetSales { get => _netSales; set => SetProperty(ref _netSales, value); }
+
+        private double _outstandingCredit;
+        public double OutstandingCredit { get => _outstandingCredit; set => SetProperty(ref _outstandingCredit, value); }
+
         private bool _showSalesGrid = true;
         public bool ShowSalesGrid { get => _showSalesGrid; set => SetProperty(ref _showSalesGrid, value); }
 
@@ -115,12 +143,13 @@ namespace GroceryPOS.ViewModels
         public ICommand PrintBillCommand { get; }
         public ICommand CloseBillDetailCommand { get; }
 
-        public ReportsViewModel(ReportService reportService, IStockService stockService, PrintService printService, AuthService authService)
+        public ReportsViewModel(ReportService reportService, IStockService stockService, PrintService printService, AuthService authService, IReturnService returnService)
         {
             _reportService = reportService;
             _stockService = stockService;
             _printService = printService;
             _authService = authService;
+            _returnService = returnService;
 
             ExportReportCommand = new RelayCommand(ExportReport);
             ViewBillCommand = new RelayCommand(obj => ViewBill(obj as Bill));
@@ -240,26 +269,36 @@ namespace GroceryPOS.ViewModels
                     ShowSalesGrid = true;
                     ShowProductGrid = false;
                     ShowLowStockGrid = false;
-                    var data = _reportService.GetByDateRange(start, end);
+                    
+                    // Fetch all bills for the period (Sales + Returns)
+                    _currentRawBills = _reportService.GetByDateRange(start, end);
+
+                    // Calculations should still reflect overall revenue for Sales
+                    var salesData = _currentRawBills.Where(b => b.Type == "Sale").ToList();
+                    
+                    double returnsTotal = _reportService.GetReturnsTotalByDateRange(start, end);
+                    double creditTotal  = _reportService.GetOutstandingCreditTotal();
+                    
                     Dispatch(() =>
                     {
-                        SalesReport.Clear();
-                        foreach (var s in data) SalesReport.Add(s);
-                        TotalRevenue = data.Sum(s => s.GrandTotal);
-                        TotalSalesCount = data.Count;
+                        TotalRevenue    = salesData.Sum(s => s.GrandTotal);
+                        TotalSalesCount = salesData.Count;
+                        TotalReturns    = returnsTotal;
+                        NetSales        = Math.Max(0, TotalRevenue - returnsTotal);
+                        OutstandingCredit = creditTotal;
 
-                        // Weekly performance summary for Monthly reports
+                        ApplyFilters();
+
+                        // Weekly breakdown log (monthly report only)
                         if (string.Equals(type, "Monthly", StringComparison.OrdinalIgnoreCase))
                         {
-                            var weeklyGroups = data.GroupBy(b => {
+                            var weeklyGroups = salesData.GroupBy(b =>
+                            {
                                 int d = (7 + (b.BillDateTime.DayOfWeek - DayOfWeek.Monday)) % 7;
                                 return b.BillDateTime.AddDays(-1 * d).Date;
                             }).OrderBy(g => g.Key);
-
                             foreach (var week in weeklyGroups)
-                            {
                                 AppLogger.Info($"Week starting {week.Key:yyyy-MM-dd}: Rs.{week.Sum(b => b.GrandTotal):N2} ({week.Count()} bills)");
-                            }
                         }
                     });
                 }
@@ -271,6 +310,38 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("Error generating report", ex);
             }
+        }
+
+        private void ApplyFilters()
+        {
+            if (_currentRawBills == null) return;
+
+            var filtered = _currentRawBills.AsEnumerable();
+
+            // 1. Filter by Bill Type Dropdown
+            if (SelectedBillFilter == "Normal Bills")
+                filtered = filtered.Where(b => b.Type == "Sale" && b.RemainingAmount <= 0);
+            else if (SelectedBillFilter == "Credit Bills")
+                filtered = filtered.Where(b => b.Type == "Sale" && b.RemainingAmount > 0);
+            else if (SelectedBillFilter == "Return Bills")
+                filtered = filtered.Where(b => b.Type == "Return");
+            // "All Bills" implies no filtering
+
+            // 2. Filter by Search Query (Invoice Number or Customer Name)
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                var q = SearchQuery.Trim().ToLower();
+                filtered = filtered.Where(b => b.InvoiceNumber.ToLower().Contains(q) || (b.Customer?.Name?.ToLower().Contains(q) ?? false));
+            }
+
+            var finalResults = filtered.ToList();
+
+            Dispatch(() =>
+            {
+                SalesReport.Clear();
+                foreach (var b in finalResults)
+                    SalesReport.Add(b);
+            });
         }
         private void ExportReport()
         {
@@ -346,17 +417,66 @@ namespace GroceryPOS.ViewModels
                 AppLogger.Error("Error exporting report", ex);
             }
         }
-        private void ViewBill(Bill? bill)
+        private async void ViewBill(Bill? bill)
         {
             if (bill == null) return;
+            
+            if (bill.IsReturn && bill.ParentBillId.HasValue)
+            {
+                try 
+                {
+                    var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
+                    bill.ParentBill = original;
+                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
+                    
+                    double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
+                    bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Failed to fetch return metadata for view", ex);
+                }
+            }
+
             SelectedHistoryBill = bill;
             IsBillDetailOpen = true;
         }
 
-        private void PrintBill(Bill? bill)
+        private async void PrintBill(Bill? bill)
         {
             if (bill == null) return;
-            _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
+
+            if (bill.IsReturn && bill.ParentBillId.HasValue && bill.ParentBill == null)
+            {
+                try 
+                {
+                    var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
+                    bill.ParentBill = original;
+                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
+
+                    double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
+                    bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Failed to fetch return metadata for print", ex);
+                }
+            }
+            
+            bool isOnline = _printService.IsPrinterOnline();
+
+            if (isOnline)
+            {
+                bool printSuccess = _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
+                if (!printSuccess)
+                {
+                    System.Windows.MessageBox.Show("Failed to communicate with the printer. Please check the connection.", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                }
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("Printer is currently unavailable or offline.\nPlease ensure the printer is connected and turned on.", "Printer Offline", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
         }
 
         private void CloseBillDetail()

@@ -145,6 +145,28 @@ namespace GroceryPOS.ViewModels
             set => SetProperty(ref _isBarcodeFocused, value);
         }
 
+        private string _systemErrorMessage = "";
+        public string SystemErrorMessage 
+        { 
+            get => _systemErrorMessage; 
+            set => SetProperty(ref _systemErrorMessage, value); 
+        }
+
+        private bool _systemErrorVisible;
+        public bool SystemErrorVisible 
+        { 
+            get => _systemErrorVisible; 
+            set => SetProperty(ref _systemErrorVisible, value); 
+        }
+
+        private async void ShowSystemError(string message)
+        {
+            SystemErrorMessage = message;
+            SystemErrorVisible = true;
+            await Task.Delay(1500);
+            SystemErrorVisible = false;
+        }
+
         private void RefocusBarcode()
         {
             IsBarcodeFocused = false;
@@ -158,13 +180,18 @@ namespace GroceryPOS.ViewModels
         private string? _selectedBillingAddress;
         public string? SelectedBillingAddress { get => _selectedBillingAddress; set { _selectedBillingAddress = value; OnPropertyChanged(nameof(SelectedBillingAddress)); } }
 
+        private bool _isAddingAddress;
+        public bool IsAddingAddress { get => _isAddingAddress; set { _isAddingAddress = value; OnPropertyChanged(); } }
+        private string _newAddressInput = "";
+        public string NewAddressInput { get => _newAddressInput; set { _newAddressInput = value; OnPropertyChanged(); } }
+
         public double DiscountAmount { get; set; }
         public double TaxAmount { get; set; }
         public double GrandTotal { get; set; }
         public double ChangeAmount { get; set; }
         public double ChangeAmountAbs => Math.Abs(ChangeAmount);
         public bool IsChangeNegative => ChangeAmount < -0.01;
-        public bool IsChangeAmountVisible => true;
+        public bool IsChangeAmountVisible => !IsChangeNegative || HasSelectedCustomer;
         
         public string ChangeDisplayLabel 
         { 
@@ -180,8 +207,8 @@ namespace GroceryPOS.ViewModels
         {
             get
             {
-                if (IsChangeNegative) return "#EF4444"; // Red
-                return "#3B82F6"; // Blue/Accent for return
+                if (IsChangeNegative) return "#EF4444"; // Red for Insufficient/Due
+                return "#3B82F6"; // Blue when sufficient cash provided and giving change
             }
         }
         public string CurrentDateTime => DateTime.Now.ToString("dddd, dd MMMM yyyy HH:mm:ss");
@@ -217,6 +244,11 @@ namespace GroceryPOS.ViewModels
         public ICommand SaveNewCustomerCommand { get; }
         public ICommand NavigateSearchCommand { get; }
         public ICommand NavigateProductSearchCommand { get; }
+        public ICommand PrintBillCommand { get; }
+
+        public ICommand AddAddressCommand { get; }
+        public ICommand CancelAddAddressCommand { get; }
+        public ICommand SaveAddressCommand { get; }
 
         public BillingViewModel(AuthService authService, ItemService itemService, BillService billService, PrintService printService, IStockService stockService, CustomerService customerService, CreditService creditService, BillRepository billRepo)
         {
@@ -252,6 +284,11 @@ namespace GroceryPOS.ViewModels
             FinishCartEditCommand = new RelayCommand(_ => { SelectedCartItem = null; OnPropertyChanged(nameof(SelectedCartItem)); RefocusBarcode(); });
             NavigateSearchCommand = new RelayCommand(p => NavigateSearchResults(p?.ToString()));
             NavigateProductSearchCommand = new RelayCommand(p => NavigateProductResults(p?.ToString()));
+            PrintBillCommand = new RelayCommand(_ => AttemptPrint(SelectedTab?.PreviewHistoryBill));
+
+            AddAddressCommand = new RelayCommand(_ => { IsAddingAddress = true; NewAddressInput = ""; });
+            CancelAddAddressCommand = new RelayCommand(_ => { IsAddingAddress = false; NewAddressInput = ""; });
+            SaveAddressCommand = new RelayCommand(_ => SaveAddress());
             LoadProducts();
         }
 
@@ -328,25 +365,61 @@ namespace GroceryPOS.ViewModels
             if (ex != null) 
             {
                 int totalRequested = ex.Quantity + QuantityInput;
-                if (totalRequested > it.StockQuantity)
+                if (totalRequested >= it.StockQuantity)
                 {
-                    ex.Quantity = (int)it.StockQuantity;
+                    if (totalRequested > it.StockQuantity)
+                    {
+                        ex.Quantity = (int)it.StockQuantity;
+                        ShowSystemError($"X Available Stock: {it.StockQuantity}");
+                    }
+                    else
+                    {
+                        ex.Quantity = totalRequested;
+                    }
                     StatusMessage = $"⚠ Available Stock: {it.StockQuantity}";
                     OnPropertyChanged(nameof(StatusMessage));
                 }
                 else
                 {
                     ex.Quantity = totalRequested;
+                    StatusMessage = "";
+                    OnPropertyChanged(nameof(StatusMessage));
                 }
             }
             else 
             {
                 int quantityToAdd = QuantityInput;
-                if (quantityToAdd > it.StockQuantity)
+                if (quantityToAdd >= it.StockQuantity)
                 {
-                    quantityToAdd = (int)it.StockQuantity;
-                    StatusMessage = $"⚠ Available Stock: {it.StockQuantity}";
-                    OnPropertyChanged(nameof(StatusMessage));
+                    if (quantityToAdd > it.StockQuantity)
+                    {
+                        quantityToAdd = (int)it.StockQuantity;
+                        ShowSystemError($"X Available Stock: {it.StockQuantity}");
+                        StatusMessage = $"✗ Available Stock: {it.StockQuantity}";
+                        OnPropertyChanged(nameof(StatusMessage));
+                    }
+                    else if (quantityToAdd == it.StockQuantity)
+                    {
+                        StatusMessage = $"✗ Available Stock: {it.StockQuantity}";
+                        OnPropertyChanged(nameof(StatusMessage));
+                    }
+                    else 
+                    {
+                        if (StatusMessage.Contains("Available Stock"))
+                        {
+                            StatusMessage = "";
+                            OnPropertyChanged(nameof(StatusMessage));
+                        }
+                    }
+                }
+                else
+                {
+                    // Do nothing here so we don't accidentally overwrite a success message unnecessarily, or explicitly clear it
+                    if (StatusMessage.Contains("Available Stock"))
+                    {
+                        StatusMessage = "";
+                        OnPropertyChanged(nameof(StatusMessage));
+                    }
                 }
                 
                 if (quantityToAdd > 0)
@@ -360,9 +433,10 @@ namespace GroceryPOS.ViewModels
                         AvailableStock = it.StockQuantity
                     });
                 }
-                else
+                else if (it.StockQuantity <= 0)
                 {
                     StatusMessage = $"✗ Available Stock: {it.StockQuantity}";
+                    ShowSystemError($"X Available Stock: {it.StockQuantity}");
                     OnPropertyChanged(nameof(StatusMessage));
                 }
             }
@@ -377,20 +451,61 @@ namespace GroceryPOS.ViewModels
         { 
             if (SelectedCartItem != null) 
             { 
-                if (SelectedCartItem.Quantity + 1 > SelectedCartItem.AvailableStock)
+                if (SelectedCartItem.Quantity + 1 >= SelectedCartItem.AvailableStock)
                 {
-                    StatusMessage = $"⚠ Available Stock: {SelectedCartItem.AvailableStock}";
+                    if (SelectedCartItem.Quantity + 1 > SelectedCartItem.AvailableStock)
+                    {
+                        ShowSystemError($"X Available Stock: {SelectedCartItem.AvailableStock}");
+                        StatusMessage = $"✗ Available Stock: {SelectedCartItem.AvailableStock}";
+                        OnPropertyChanged(nameof(StatusMessage));
+                        return;
+                    }
+                    StatusMessage = $"✗ Available Stock: {SelectedCartItem.AvailableStock}";
                     OnPropertyChanged(nameof(StatusMessage));
-                    return;
+                }
+                else
+                {
+                    if (StatusMessage.Contains("Available Stock"))
+                    {
+                        StatusMessage = "";
+                        OnPropertyChanged(nameof(StatusMessage));
+                    }
                 }
                 SelectedCartItem.Quantity++; 
                 RecalculateTotal(); 
                 RefocusBarcode(); 
             } 
         }
-        private void DecreaseQuantity() { if (SelectedCartItem != null && SelectedCartItem.Quantity > 1) { SelectedCartItem.Quantity--; RecalculateTotal(); RefocusBarcode(); } }
+        private void DecreaseQuantity() 
+        { 
+            if (SelectedCartItem != null && SelectedCartItem.Quantity > 1) 
+            { 
+                SelectedCartItem.Quantity--; 
+                if (SelectedCartItem.Quantity < SelectedCartItem.AvailableStock)
+                {
+                    StatusMessage = "";
+                    OnPropertyChanged(nameof(StatusMessage));
+                }
+                RecalculateTotal(); 
+                RefocusBarcode(); 
+            } 
+        }
         private void RecalculateTotal() { if (SelectedTab == null) return; SubTotal = SelectedTab.CartItems.Sum(i => i.TotalPrice); double.TryParse(DiscountText, out var d); double.TryParse(TaxText, out var t); DiscountAmount = d; TaxAmount = t; GrandTotal = SubTotal - DiscountAmount + TaxAmount; CalculateChange(); OnPropertyChanged(nameof(SubTotal)); OnPropertyChanged(nameof(DiscountAmount)); OnPropertyChanged(nameof(TaxAmount)); OnPropertyChanged(nameof(GrandTotal)); OnPropertyChanged(nameof(CartItems)); }
-        private void CalculateChange() { if (double.TryParse(CashReceivedText, out var c)) ChangeAmount = c - GrandTotal; else ChangeAmount = -GrandTotal; OnPropertyChanged(nameof(ChangeAmount)); OnPropertyChanged(nameof(ChangeAmountAbs)); OnPropertyChanged(nameof(IsChangeNegative)); OnPropertyChanged(nameof(IsChangeAmountVisible)); OnPropertyChanged(nameof(ChangeDisplayLabel)); OnPropertyChanged(nameof(ChangeDisplayBrush)); }
+        private void CalculateChange() 
+        { 
+            bool hasCash = double.TryParse(CashReceivedText, out var c);
+            if (hasCash) 
+                ChangeAmount = c - GrandTotal; 
+            else 
+                ChangeAmount = -GrandTotal; 
+                
+            OnPropertyChanged(nameof(ChangeAmount)); 
+            OnPropertyChanged(nameof(ChangeAmountAbs)); 
+            OnPropertyChanged(nameof(IsChangeNegative)); 
+            OnPropertyChanged(nameof(IsChangeAmountVisible)); 
+            OnPropertyChanged(nameof(ChangeDisplayLabel)); 
+            OnPropertyChanged(nameof(ChangeDisplayBrush)); 
+        }
         private async void CompleteSale() 
         { 
             try 
@@ -420,6 +535,10 @@ namespace GroceryPOS.ViewModels
                 }
 
                 var sb = _billService.CompleteBill(_authService.CurrentUser?.Id, SelectedCustomer?.CustomerId, SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), d, t, cashReceived, paidAmount, SelectedBillingAddress);
+
+                // Ensure Customer object is attached for PrintService
+                sb.Customer = SelectedCustomer;
+
                 await AttemptPrint(sb);
                 StatusMessage = $"✓ Sale Completed: Bill #{sb.InvoiceNumber} | {sb.PaymentStatus}";
                 OnPropertyChanged(nameof(StatusMessage));
@@ -427,7 +546,24 @@ namespace GroceryPOS.ViewModels
             } 
             catch (Exception ex) { StatusMessage = $"✗ Bill failed: {ex.Message}"; OnPropertyChanged(nameof(StatusMessage)); AppLogger.Error("Complete bill failed", ex); } 
         }
-        private async Task AttemptPrint(Bill b) { b.PrintAttempts++; if (!_printService.IsPrinterOnline()) { if (MessageBox.Show("Printer offline. Retry?", "Printer Error", MessageBoxButton.YesNo) == MessageBoxResult.Yes) await AttemptPrint(b); else _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); return; } if (_printService.PrintReceipt(b, _authService.CurrentUser?.FullName ?? "Cashier")) _billRepo.UpdatePrintStatus(b.BillId, true, DateTime.Now, b.PrintAttempts); else _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); }
+        private async Task AttemptPrint(Bill b) 
+        { 
+            b.PrintAttempts++; 
+            bool isOnline = _printService.IsPrinterOnline();
+
+            if (isOnline)
+            {
+                bool printSuccess = _printService.PrintReceipt(b, _authService.CurrentUser?.FullName ?? "Cashier");
+                if (printSuccess)
+                {
+                    _billRepo.UpdatePrintStatus(b.BillId, true, DateTime.Now, b.PrintAttempts); 
+                    return;
+                }
+            }
+
+            // Printer is offline or print failed. Complete the sale normally without queuing.
+            _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); 
+        }
         private void ClearCart() 
         { 
             if (SelectedTab == null) return; 
@@ -486,6 +622,7 @@ namespace GroceryPOS.ViewModels
             PendingCreditAmount = 0; 
             AvailableAddresses.Clear();
             SelectedBillingAddress = null;
+            IsAddingAddress = false;
 
             // Clear cart and reset billing totals
             foreach (var item in SelectedTab.CartItems)
@@ -512,6 +649,30 @@ namespace GroceryPOS.ViewModels
             OnPropertyChanged(nameof(HasSelectedCustomer));
             OnPropertyChanged(nameof(PendingCreditAmount));
         }
+
+        private void SaveAddress()
+        {
+            if (SelectedCustomer == null || string.IsNullOrWhiteSpace(NewAddressInput)) return;
+
+            if (string.IsNullOrWhiteSpace(SelectedCustomer.Address)) SelectedCustomer.Address = NewAddressInput;
+            else if (string.IsNullOrWhiteSpace(SelectedCustomer.Address2)) SelectedCustomer.Address2 = NewAddressInput;
+            else if (string.IsNullOrWhiteSpace(SelectedCustomer.Address3)) SelectedCustomer.Address3 = NewAddressInput;
+
+            try
+            {
+                _customerService.UpdateCustomer(SelectedCustomer);
+                AvailableAddresses.Add(NewAddressInput);
+                SelectedBillingAddress = NewAddressInput;
+                IsAddingAddress = false;
+                NewAddressInput = "";
+                OnPropertyChanged(nameof(AvailableAddresses));
+                OnPropertyChanged(nameof(SelectedBillingAddress));
+            }
+            catch (Exception ex)
+            {
+                ShowSystemError("Failed to save address: " + ex.Message);
+            }
+        }
         private void LoadCustomerHistory(int id) { if (SelectedTab == null) return; var bills = _billRepo.GetBillsByCustomerId(id); SelectedTab.CustomerBills.Clear(); foreach (var b in bills) SelectedTab.CustomerBills.Add(b); OnPropertyChanged(nameof(CustomerBills)); }
         private void LoadBillIntoCart(Bill b)
         {
@@ -532,6 +693,7 @@ namespace GroceryPOS.ViewModels
                 {
                     existing.AvailableStock = stock;
                     existing.Quantity += finalQty;
+                    existing.IsCopied = true; // Mark as copied if any part of it was copied
                     // Re-cap after addition
                     if (existing.Quantity > stock) { existing.Quantity = stock; wasCapped = true; }
                 }
@@ -543,7 +705,8 @@ namespace GroceryPOS.ViewModels
                         ItemDescription = it.ItemDescription, 
                         UnitPrice = it.UnitPrice, 
                         Quantity = finalQty,
-                        AvailableStock = stock
+                        AvailableStock = stock,
+                        IsCopied = true // Set copied flag
                     };
                     // PropertyChanged already handled by CollectionChanged in most cases, 
                     // but the setter for SelectedTab also adds it. 
@@ -662,10 +825,25 @@ namespace GroceryPOS.ViewModels
         {
             if (e.PropertyName == nameof(CartItem.Quantity))
             {
-                if (sender is CartItem item && item.Quantity > item.AvailableStock)
+                if (sender is CartItem item)
                 {
-                    item.Quantity = (int)item.AvailableStock;
-                    StatusMessage = $"⚠ Available Stock: {item.AvailableStock}";
+                    if (item.Quantity >= item.AvailableStock)
+                    {
+                        if (item.Quantity > item.AvailableStock)
+                        {
+                            item.Quantity = (int)item.AvailableStock;
+                            ShowSystemError($"X Available Stock: {item.AvailableStock}");
+                            return; // Wait for the recursive property changed to hit this logic instead
+                        }
+                        StatusMessage = $"✗ Available Stock: {item.AvailableStock}";
+                    }
+                    else
+                    {
+                        if (StatusMessage.Contains("Available Stock"))
+                        {
+                            StatusMessage = "";
+                        }
+                    }
                     OnPropertyChanged(nameof(StatusMessage));
                 }
                 RecalculateTotal();
@@ -703,6 +881,7 @@ namespace GroceryPOS.ViewModels
 
                 IsHistoryPaymentOpen = false;
                 StatusMessage = $"✓ Payment of Rs. {amount:N0} recorded for Bill #{updatedBill.InvoiceNumber}";
+                MessageBox.Show(StatusMessage, "Payment Recorded", MessageBoxButton.OK, MessageBoxImage.Information);
                 OnPropertyChanged(nameof(StatusMessage));
             }
             catch (Exception ex)

@@ -237,22 +237,111 @@ namespace GroceryPOS.Data.Repositories
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
-        /// <summary>Gets today's total paid amount (subtracts returned grand totals).</summary>
+        /// <summary>Gets today's total paid amount from sales (excludes returns).</summary>
         public double GetTodayTotalPaid()
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COALESCE(SUM(
-                    CASE 
-                        WHEN Type = 'Return' THEN GrandTotal 
-                        ELSE PaidAmount 
-                    END
-                ), 0) FROM Bill 
-                WHERE BillDateTime >= @from AND BillDateTime < @to AND Status != 'Cancelled';
+                SELECT COALESCE(SUM(PaidAmount), 0) FROM Bill 
+                WHERE BillDateTime >= @from AND BillDateTime < @to 
+                  AND Type = 'Sale' AND Status != 'Cancelled';";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets today's total cash refunded to customers from returns.</summary>
+        public double GetTodayCashRefunded()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(PaidAmount), 0) FROM Bill 
+                WHERE BillDateTime >= @from AND BillDateTime < @to 
+                  AND Type = 'Return' AND Status != 'Cancelled';";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets today's recovered credit from payments made today for previous bills.</summary>
+        public double GetTodayRecoveredCredit()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(cp.AmountPaid), 0)
+                FROM CreditPayments cp
+                JOIN Bill b ON cp.BillId = b.bill_id
+                WHERE cp.PaidAt >= @from AND cp.PaidAt < @to
+                AND b.BillDateTime < @from;
             ";
             cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets the absolute total value of all return bills today.</summary>
+        public double GetTodayReturnsTotal()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(ABS(GrandTotal)), 0) FROM Bill
+                WHERE BillDateTime >= @from AND BillDateTime < @to
+                  AND Type = 'Return';";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets total return value for a date range.</summary>
+        public double GetReturnsTotalByDateRange(DateTime from, DateTime to)
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(ABS(GrandTotal)), 0) FROM Bill
+                WHERE BillDateTime >= @from AND BillDateTime < @to
+                  AND Type = 'Return';";
+            cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets sale bills only (no returns) for a date range.</summary>
+        public List<Bill> GetSalesOnlyByDateRange(DateTime from, DateTime to)
+        {
+            var bills = new List<Bill>();
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
+                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, c.CreatedAt as CustomerJoinDate
+                FROM Bill b
+                LEFT JOIN User u ON b.UserId = u.Id
+                LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                WHERE b.BillDateTime >= @from AND b.BillDateTime < @to
+                  AND b.Type = 'Sale'
+                ORDER BY b.BillDateTime DESC;";
+            cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                bills.Add(MapBill(reader));
+            LoadLineItems(conn, bills);
+            return bills;
+        }
+
+        /// <summary>Gets total outstanding credit across all customers.</summary>
+        public double GetOutstandingCreditTotal()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(RemainingAmount), 0) FROM Bill
+                WHERE RemainingAmount > 0 AND Type = 'Sale' AND Status != 'Cancelled';";
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -559,32 +648,6 @@ namespace GroceryPOS.Data.Repositories
             cmd.Parameters.AddWithValue("@printAttempts", printAttempts);
             cmd.Parameters.AddWithValue("@id", billId);
             cmd.ExecuteNonQuery();
-        }
-
-        public List<Bill> GetPendingPrintBills()
-        {
-            var bills = new List<Bill>();
-            using var conn = DatabaseHelper.GetConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT b.*, u.Username, u.FullName, u.Role, u.IsActive, u.CreatedAt,
-                       c.Name as CustomerName, c.PrimaryPhone, c.Address as CustomerAddress, 
-                       c.Address2 as CustomerAddress2, c.Address3 as CustomerAddress3,
-                       c.CreatedAt as CustomerJoinDate
-                FROM Bill b
-                LEFT JOIN User u ON b.UserId = u.Id
-                LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
-                WHERE b.IsPrinted = 0 AND b.Status != 'Cancelled'
-                ORDER BY b.BillDateTime DESC;";
-
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-                bills.Add(MapBill(reader));
-
-            // Load items for each bill in a single batch
-            LoadLineItems(conn, bills);
-
-            return bills;
         }
 
         // ────────────────────────────────────────────

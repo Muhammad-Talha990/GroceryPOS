@@ -8,6 +8,7 @@ using GroceryPOS.Helpers;
 using GroceryPOS.Models;
 using System.Management;
 using System.Linq;
+using System.Printing;
 
 namespace GroceryPOS.Services
 {
@@ -77,30 +78,57 @@ namespace GroceryPOS.Services
 
                 if (string.IsNullOrEmpty(printerName)) return false;
 
-                string query = $"SELECT * FROM Win32_Printer WHERE Name = '{printerName.Replace("\\", "\\\\")}'";
-                using (var searcher = new ManagementObjectSearcher(query))
-                using (var results = searcher.Get())
+                using (var server = new LocalPrintServer())
                 {
-                    foreach (ManagementObject printer in results)
+                    var queue = server.GetPrintQueues().FirstOrDefault(q => q.Name.Equals(printerName, StringComparison.OrdinalIgnoreCase) || q.FullName.Equals(printerName, StringComparison.OrdinalIgnoreCase));
+                    if (queue != null)
                     {
-                        var status = printer["PrinterStatus"]?.ToString();
-                        var workOffline = printer["WorkOffline"]?.ToString()?.ToLower() == "true";
-                        var printerState = printer["PrinterState"]?.ToString();
+                        queue.Refresh();
+                        bool isOffline = false;
 
-                        // PrinterStatus: 3=Idle/Ready, 4=Printing, 5=Warming Up
-                        // WorkOffline: must be false
-                        if (!workOffline && (status == "3" || status == "4" || status == "5"))
+                        if (queue.IsOffline || queue.IsNotAvailable || queue.IsInError)
                         {
-                            return true;
+                            isOffline = true;
                         }
+                        else if ((queue.QueueStatus & PrintQueueStatus.Offline) == PrintQueueStatus.Offline ||
+                                 (queue.QueueStatus & PrintQueueStatus.Error) == PrintQueueStatus.Error ||
+                                 (queue.QueueStatus & PrintQueueStatus.NotAvailable) == PrintQueueStatus.NotAvailable)
+                        {
+                            isOffline = true;
+                        }
+                        else if (queue.NumberOfJobs > 0)
+                        {
+                            // A healthy direct-thermal printer prints instantly. 
+                            // Any stuck jobs indicate the physical hardware is off or disconnected, 
+                            // even if Windows driver falsely claims it is "Ready".
+                            isOffline = true;
+                        }
+
+                        if (isOffline)
+                        {
+                            try
+                            {
+                                // Force clear the queue to ensure past bills aren't stored
+                                queue.Purge();
+                            }
+                            catch (Exception purgeEx)
+                            {
+                                AppLogger.Error("Failed to purge print queue", purgeEx);
+                            }
+                            return false;
+                        }
+
+                        return true;
                     }
                 }
+                
+                return false;
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Printer status check failed", ex);
+                return false;
             }
-            return false;
         }
 
         public bool PrintUnifiedReturnReceipt(Bill originalBill, Bill returnBill, List<Bill> history, string cashierName)
@@ -186,6 +214,12 @@ namespace GroceryPOS.Services
         {
             try
             {
+                // If it's a return and has the parent bill metadata, use the unified return layout
+                if (bill.IsReturn && bill.ParentBill != null)
+                {
+                    return PrintUnifiedReturnReceipt(bill.ParentBill, bill, bill.ReturnHistory, cashierName);
+                }
+
                 _billToPrint = bill;
                 _cashierName = cashierName;
 
@@ -229,6 +263,44 @@ namespace GroceryPOS.Services
                 AppLogger.Error("Receipt printing failed", ex);
                 _preferredPrinter = null;
                 return false;
+            }
+        }
+
+        public void SaveReceiptAsPdf(Bill bill, string cashierName)
+        {
+            try
+            {
+                using (var saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Filter = "PDF Files (*.pdf)|*.pdf";
+                    saveDialog.FileName = $"Receipt_{bill.InvoiceNumber}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+                    saveDialog.Title = "Save Receipt as PDF";
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        _billToPrint = bill;
+                        _cashierName = cashierName;
+
+                        var printDoc = new PrintDocument();
+                        printDoc.PrinterSettings.PrinterName = "Microsoft Print to PDF";
+                        printDoc.PrinterSettings.PrintToFile = true;
+                        printDoc.PrinterSettings.PrintFileName = saveDialog.FileName;
+
+                        printDoc.DefaultPageSettings.PaperSize = new PaperSize("Receipt", 302, 1000);
+                        printDoc.DefaultPageSettings.Margins = new Margins(5, 5, 5, 5);
+
+                        printDoc.PrintPage += PrintPage_Handler;
+                        printDoc.Print();
+
+                        AppLogger.Info($"Receipt saved as PDF: {saveDialog.FileName}");
+                        MessageBox.Show("Receipt saved successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to save receipt as PDF", ex);
+                MessageBox.Show($"Failed to save PDF: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -375,6 +447,17 @@ namespace GroceryPOS.Services
                 g.DrawString("Change:", normalFont, Brushes.Black, margin, y);
                 g.DrawString($"Rs.{_billToPrint.ChangeGiven:N2}", normalFont, Brushes.Black, pageWidth, y, sfRight);
                 y += 20;
+
+                if (_billToPrint.HasPendingCredit)
+                {
+                    g.DrawString("Paid Amount:", boldFont, Brushes.Black, margin, y);
+                    g.DrawString($"Rs.{_billToPrint.PaidAmount:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+                    y += 14;
+
+                    g.DrawString("DUE AMOUNT:", boldFont, Brushes.Black, margin, y);
+                    g.DrawString($"Rs.{_billToPrint.RemainingAmount:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+                    y += 20;
+                }
             }
             else
             {
@@ -503,17 +586,17 @@ namespace GroceryPOS.Services
             var g = e.Graphics;
             var headerFont = new Font("Consolas", 11, FontStyle.Bold);
             var normalFont = new Font("Consolas", 8);
-            var boldFont = new Font("Consolas", 8, FontStyle.Bold);
-            var smallFont = new Font("Consolas", 7);
+            var boldFont   = new Font("Consolas", 8, FontStyle.Bold);
+            var smallFont  = new Font("Consolas", 7);
 
-            float y = 5;
-            float margin = 5;
+            float y         = 5;
+            float margin    = 5;
             float pageWidth = 265;
-            var sf = new StringFormat { Alignment = StringAlignment.Center };
+            var sf      = new StringFormat { Alignment = StringAlignment.Center };
             var sfRight = new StringFormat { Alignment = StringAlignment.Far };
 
-            // 1. Header (Identical to Original)
-            g.DrawString(_storeName, headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf); 
+            // ── 1. Store Header ──────────────────────────────────────────────
+            g.DrawString(_storeName, headerFont, Brushes.Black, new RectangleF(0, y, 302, 20), sf);
             y += 20;
             g.DrawString("--- RETURN RECEIPT ---", boldFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
             y += 15;
@@ -524,18 +607,34 @@ namespace GroceryPOS.Services
 
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
-            // 2. Bill Infos (Identical to Original Style)
+            // ── 2. Return Bill Info ──────────────────────────────────────────
             g.DrawString($"Return Receipt#: {_currentReturnBill.InvoiceNumber}", normalFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Original Bill#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Date: {_currentReturnBill.BillDateTime}", normalFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 16;
+            g.DrawString($"Original Bill#:  {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Date: {_currentReturnBill.BillDateTime:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
 
+            // ── 3. Customer Info (if registered) ───────────────────────────
+            if (_billToPrint.CustomerId.HasValue)
+            {
+                string custName = _billToPrint.Customer?.FullName ?? "Customer";
+                g.DrawString($"Customer: {custName}", boldFont, Brushes.Black, margin, y); y += 13;
+
+                if (!string.IsNullOrEmpty(_billToPrint.BillingAddress))
+                {
+                    RectangleF addrRect = new RectangleF(margin, y, pageWidth, 40);
+                    g.DrawString($"Address:  {_billToPrint.BillingAddress}", smallFont, Brushes.Black, addrRect);
+                    SizeF addrSize = g.MeasureString($"Address:  {_billToPrint.BillingAddress}", smallFont, (int)pageWidth);
+                    y += Math.Max(13, addrSize.Height + 2);
+                }
+            }
+
+            y += 4;
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
-            // 3. Original Items Section (Same Header as Original)
+            // ── 4. Original Sale Details ─────────────────────────────────────
             g.DrawString("ORIGINAL SALE DETAILS", boldFont, Brushes.Black, margin, y); y += 14;
-            g.DrawString("Item", boldFont, Brushes.Black, margin, y);
-            g.DrawString("Qty", boldFont, Brushes.Black, 130, y);
+            g.DrawString("Item",  boldFont, Brushes.Black, margin, y);
+            g.DrawString("Qty",   boldFont, Brushes.Black, 130, y);
             g.DrawString("Price", boldFont, Brushes.Black, 170, y);
             g.DrawString("Total", boldFont, Brushes.Black, pageWidth, y, sfRight);
             y += 14;
@@ -546,23 +645,20 @@ namespace GroceryPOS.Services
                 float descWidth = 125;
                 RectangleF rect = new RectangleF(margin, y, descWidth, 200);
                 g.DrawString(item.ItemDescription, normalFont, Brushes.Black, rect);
-                
                 SizeF size = g.MeasureString(item.ItemDescription, normalFont, (int)descWidth);
                 float descHeight = Math.Max(14, size.Height);
 
                 g.DrawString(item.Quantity.ToString(), normalFont, Brushes.Black, 135, y);
                 g.DrawString(item.UnitPrice.ToString("N0"), normalFont, Brushes.Black, 170, y);
                 g.DrawString(item.TotalPrice.ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
-                
                 y += descHeight + 3;
             }
             g.DrawString($"Orig Total: Rs.{_billToPrint.GrandTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
             y += 20;
 
-            // 3.5 Previous Return History (New Section)
+            // ── 5. Previous Return History ────────────────────────────────────
             if (_returnHistoryToPrint != null && _returnHistoryToPrint.Any())
             {
-                // Filter out the current return if it's already in history to avoid duplication
                 var previousReturns = _returnHistoryToPrint
                     .Where(r => r.InvoiceNumber != _currentReturnBill.InvoiceNumber)
                     .OrderBy(r => r.BillDateTime)
@@ -571,34 +667,47 @@ namespace GroceryPOS.Services
                 if (previousReturns.Any())
                 {
                     g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
-                    g.DrawString("PREVIOUS RETURN HISTORY", boldFont, Brushes.Black, margin, y); y += 14;
+                    g.DrawString("PREVIOUS RETURNS", boldFont, Brushes.Black, margin, y); y += 14;
+
+                    // Column headers — same style as Original Sale Details
+                    g.DrawString("Item",   boldFont, Brushes.Black, margin, y);
+                    g.DrawString("Qty",    boldFont, Brushes.Black, 130, y);
+                    g.DrawString("Amount", boldFont, Brushes.Black, pageWidth, y, sfRight);
+                    y += 13;
+                    g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 11;
 
                     int retIdx = 1;
                     foreach (var prevRet in previousReturns)
                     {
-                        g.DrawString($"Return #{retIdx} ({prevRet.BillDateTime:dd/MM HH:mm})", boldFont, Brushes.Black, margin, y);
-                        y += 13;
+                        // Sub-header for each return transaction
+                        g.DrawString($"Return #{retIdx}  ({prevRet.BillDateTime:dd/MM HH:mm})", smallFont, Brushes.Black, margin, y);
+                        y += 12;
 
                         foreach (var item in prevRet.Items)
                         {
-                            string itemRow = $"  {item.ItemDescription} ({Math.Abs(item.Quantity)})";
-                            g.DrawString(itemRow, smallFont, Brushes.Black, margin + 5, y);
-                            y += 11;
+                            float descWidth = 125;
+                            RectangleF rect = new RectangleF(margin + 5, y, descWidth, 200);
+                            g.DrawString(item.ItemDescription, smallFont, Brushes.Black, rect);
+                            SizeF size = g.MeasureString(item.ItemDescription, smallFont, (int)descWidth);
+                            float descHeight = Math.Max(12, size.Height);
+
+                            g.DrawString(Math.Abs(item.Quantity).ToString(), smallFont, Brushes.Black, 135, y);
+                            g.DrawString(Math.Abs(item.TotalPrice).ToString("N0"), smallFont, Brushes.Black, pageWidth, y, sfRight);
+                            y += descHeight + 2;
                         }
-                        y += 4;
+                        y += 5;
                         retIdx++;
                     }
                     y += 5;
                 }
             }
 
+            // ── 6. Current Return Items ──────────────────────────────────────
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
-
-            // 4. Return Items Section
-            g.DrawString("RETURNED ITEMS ", boldFont, Brushes.Black, margin, y); y += 14;
-            g.DrawString("Item", boldFont, Brushes.Black, margin, y);
-            g.DrawString("Qty", boldFont, Brushes.Black, 130, y);
-            g.DrawString("Refund", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            g.DrawString("RETURNED ITEMS (THIS RETURN)", boldFont, Brushes.Black, margin, y); y += 14;
+            g.DrawString("Item",   boldFont, Brushes.Black, margin, y);
+            g.DrawString("Qty",    boldFont, Brushes.Black, 130, y);
+            g.DrawString("Amount", boldFont, Brushes.Black, pageWidth, y, sfRight);
             y += 14;
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
@@ -607,29 +716,55 @@ namespace GroceryPOS.Services
                 float descWidth = 125;
                 RectangleF rect = new RectangleF(margin, y, descWidth, 200);
                 g.DrawString(item.ItemDescription, normalFont, Brushes.Black, rect);
-                
                 SizeF size = g.MeasureString(item.ItemDescription, normalFont, (int)descWidth);
                 float descHeight = Math.Max(14, size.Height);
 
                 g.DrawString(Math.Abs(item.Quantity).ToString(), normalFont, Brushes.Black, 135, y);
                 g.DrawString(Math.Abs(item.TotalPrice).ToString("N0"), normalFont, Brushes.Black, pageWidth, y, sfRight);
-                
                 y += descHeight + 3;
             }
 
             g.DrawString(new string('=', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
-            // 5. Grand Totals (Large font as requested)
-            g.DrawString("TOTAL REFUNDED:", headerFont, Brushes.Black, margin, y);
-            g.DrawString($"Rs.{Math.Abs(_currentReturnBill.GrandTotal):N2}", headerFont, Brushes.Black, pageWidth, y, sfRight);
-            y += 25;
+            // ── 7. Totals — context-aware ────────────────────────────────────
+            double returnTotal  = Math.Abs(_currentReturnBill.GrandTotal);
+            double cashRefund   = _currentReturnBill.CashReceived;    // actual cash handed back
+            double creditOffset = _currentReturnBill.RemainingAmount; // credit reduced (repurposed field)
+            string outcome      = _currentReturnBill.Status;          // "CashOnly"|"CreditOnly"|"Mixed"
 
-            g.DrawString("* Amount Credited/Refunded *", normalFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
-            y += 20;
+            double previousReturnsTotal = _returnHistoryToPrint?.Where(r => r.InvoiceNumber != _currentReturnBill.InvoiceNumber).Sum(r => Math.Abs(r.GrandTotal)) ?? 0;
+            double remainingDue = _billToPrint.GrandTotal - previousReturnsTotal - returnTotal;
 
-            // Footer (Identical to Original)
-            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y);
-            y += 14;
+            // Return value total
+            g.DrawString("RETURN VALUE:", boldFont, Brushes.Black, margin, y);
+            g.DrawString($"Rs.{returnTotal:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 18;
+
+            g.DrawString("REMAINING DUE AMOUNT:", boldFont, Brushes.Black, margin, y);
+            g.DrawString($"Rs.{remainingDue:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+            y += 18;
+
+            if (outcome == "CreditOnly" || outcome == "Mixed")
+            {
+                g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 10;
+                g.DrawString("ADJUSTED AGAINST CREDIT:", boldFont, Brushes.Black, margin, y);
+                g.DrawString($"Rs.{creditOffset:N2}", boldFont, Brushes.Black, pageWidth, y, sfRight);
+                y += 13;
+                g.DrawString("(No cash refund for this portion)", smallFont, Brushes.Black,
+                             new RectangleF(0, y, 302, 13), sf);
+                y += 16;
+            }
+
+            if (outcome == "CashOnly" || outcome == "Mixed")
+            {
+                g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 10;
+                g.DrawString("CASH REFUND TO CUSTOMER:", headerFont, Brushes.Black, margin, y);
+                g.DrawString($"Rs.{cashRefund:N2}", headerFont, Brushes.Black, pageWidth, y, sfRight);
+                y += 26;
+            }
+
+            // ── 8. Footer ────────────────────────────────────────────────────
+            g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
             g.DrawString("Thank you for shopping!", normalFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);
             y += 15;
             g.DrawString("Please come again", smallFont, Brushes.Black, new RectangleF(0, y, 302, 15), sf);

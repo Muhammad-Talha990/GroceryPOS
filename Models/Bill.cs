@@ -94,7 +94,7 @@ namespace GroceryPOS.Models
         public bool IsReturn => Type == "Return";
 
         /// <summary>True when customer still owes money on this bill.</summary>
-        public bool HasPendingCredit => RemainingAmount > 0 && Type == "Sale" && Status != "Cancelled";
+        public bool HasPendingCredit => RemainingAmount > 0 && Status != "Cancelled";
 
         /// <summary>UI color key for payment status badges.</summary>
         public string PaymentStatusColor => PaymentStatus switch
@@ -104,5 +104,13 @@ namespace GroceryPOS.Models
             "Unpaid"  => "#EF4444",  // red
             _         => "#94A3B8"   // slate
         };
+
+        // --- Return Metadata (UI Only) ---
+        /// <summary>The original bill this return belongs to.</summary>
+        public Bill? ParentBill { get; set; }
+        /// <summary>Other returns associated with the same parent bill.</summary>
+        public List<Bill> ReturnHistory { get; set; } = new();
+        /// <summary>Calculated summary for UI display of returns.</summary>
+        public double RemainingDueAfterThisReturn { get; set; }
     }
 }

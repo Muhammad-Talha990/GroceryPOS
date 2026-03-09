@@ -130,13 +130,15 @@ namespace GroceryPOS.Data.Repositories
             AppLogger.Info($"Item added: '{item.Description}' (Barcode: {item.ItemId})");
         }
 
-        /// <summary>Updates an existing item by barcode.</summary>
-        public void Update(Item item)
+        /// <summary>Updates an existing item by barcode. If newBarcode != oldBarcode, SQLite cascade updates will sync related records.</summary>
+        public void Update(Item item, string originalBarcode = null)
         {
+            string targetBarcode = originalBarcode ?? item.ItemId;
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 UPDATE Item SET 
+                    itemId        = @newId,
                     Description   = @desc,
                     CostPrice     = @cost,
                     SalePrice     = @sale,
@@ -144,7 +146,8 @@ namespace GroceryPOS.Data.Repositories
                     MinStockThreshold = @threshold
                 WHERE itemId = @id;
             ";
-            cmd.Parameters.AddWithValue("@id", item.ItemId);
+            cmd.Parameters.AddWithValue("@newId", item.ItemId);
+            cmd.Parameters.AddWithValue("@id", targetBarcode);
             cmd.Parameters.AddWithValue("@desc", item.Description);
             cmd.Parameters.AddWithValue("@cost", item.CostPrice);
             cmd.Parameters.AddWithValue("@sale", item.SalePrice);
@@ -152,7 +155,7 @@ namespace GroceryPOS.Data.Repositories
             cmd.Parameters.AddWithValue("@threshold", item.MinStockThreshold);
             cmd.ExecuteNonQuery();
 
-            AppLogger.Info($"Item updated (info only): '{item.Description}' (Barcode: {item.ItemId})");
+            AppLogger.Info($"Item updated: '{item.Description}' (Old Barcode: {targetBarcode}, New Barcode: {item.ItemId})");
         }
 
         /// <summary>Permanently deletes an item by barcode.</summary>

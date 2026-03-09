@@ -128,5 +128,14 @@ namespace GroceryPOS.Services
         }
 
         public string GetDiagnostics() => DatabaseHelper.GetDatabaseDiagnostics();
+
+        /// <summary>Gets sale bills only (no returns) for a date range.</summary>
+        public List<Bill> GetSalesOnlyByDateRange(DateTime from, DateTime to) => _billRepo.GetSalesOnlyByDateRange(from, to);
+
+        /// <summary>Gets the total value of all returns in a date range.</summary>
+        public double GetReturnsTotalByDateRange(DateTime from, DateTime to) => _billRepo.GetReturnsTotalByDateRange(from, to);
+
+        /// <summary>Gets total outstanding customer credit (all-time).</summary>
+        public double GetOutstandingCreditTotal() => _billRepo.GetOutstandingCreditTotal();
     }
 }

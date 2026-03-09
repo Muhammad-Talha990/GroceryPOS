@@ -296,12 +296,49 @@
 
                         <Rectangle Stroke="#E2E8F0" StrokeDashArray="4 2" StrokeThickness="1" Height="1" Margin="0,15" SnapsToDevicePixels="True"/>
                         
-                        <!-- Totals Area -->
                         <Border Background="#F0FDF4" CornerRadius="8" Padding="12,10" Margin="0,10">
                             <Grid>
                                 <TextBlock Text="RETURN TOTAL" FontSize="14" FontWeight="Bold" Foreground="#166534" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding CurrentReturnGrandTotal, StringFormat='Rs.{0:N0}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#15803D"/>
                             </Grid>
+                        </Border>
+
+                        <!-- Remaining Due (Calculated) -->
+                        <Border Style="{StaticResource CardBorder}" Background="#FFF1F2" Padding="12,8" Margin="0,4" BorderBrush="#FECDD3"
+                                Visibility="{Binding OriginalBill, Converter={StaticResource NullToVisibilityConverter}}">
+                            <Grid>
+                                <TextBlock Text="REMAINING DUE" FontSize="12" FontWeight="Bold" Foreground="#BE123C" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding PreviewRemainingDue, StringFormat='Rs.{0:N0}'}" FontSize="15" FontWeight="Bold" HorizontalAlignment="Right" Foreground="#E11D48"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- ── Return Outcome Summary ── -->
+
+                        <!-- Cash Refund Row (visible only when cash refund > 0) -->
+                        <Border CornerRadius="8" Padding="12,8" Margin="0,4"
+                                Background="#FEF3C7"
+                                Visibility="{Binding ShowCashRefundRow, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="✅ CASH REFUND" FontSize="11" FontWeight="Bold" Foreground="#92400E"/>
+                                <TextBlock FontSize="12" Foreground="#78350F" Margin="0,2,0,0">
+                                    <Run Text="Amount to return: Rs. "/>
+                                    <Run Text="{Binding ReturnResultCashRefund, StringFormat='{}{0:N0}', Mode=OneWay}" FontWeight="Bold"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Credit Adjustment Row (visible only when credit > 0) -->
+                        <Border CornerRadius="8" Padding="12,8" Margin="0,4"
+                                Background="#EFF6FF"
+                                Visibility="{Binding ShowCreditAdjustRow, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="🔁 ADJUSTED AGAINST CREDIT" FontSize="11" FontWeight="Bold" Foreground="#1D4ED8"/>
+                                <TextBlock FontSize="12" Foreground="#1E40AF" Margin="0,2,0,0">
+                                    <Run Text="Amount adjusted: Rs. "/>
+                                    <Run Text="{Binding ReturnResultCreditAdjusted, StringFormat='{}{0:N0}', Mode=OneWay}" FontWeight="Bold"/>
+                                </TextBlock>
+                                <TextBlock Text="No cash refund for this portion." FontSize="10" Foreground="#3B82F6" Margin="0,2,0,0"/>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
 

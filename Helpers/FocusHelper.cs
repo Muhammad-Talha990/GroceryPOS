@@ -333,7 +333,8 @@ namespace GroceryPOS.Helpers
                 {
                     element.Focus();
                     Keyboard.Focus(element);
-                }));
+                    if (element is TextBox tb) { tb.SelectAll(); tb.CaretIndex = tb.Text.Length; }
+                }), System.Windows.Threading.DispatcherPriority.Input);
             }
         }
         // --- FixComboBoxSearch Attached Property ---

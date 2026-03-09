@@ -29,6 +29,24 @@ namespace GroceryPOS.ViewModels
         private double _todayCash;
         public double TodayCash { get => _todayCash; set => SetProperty(ref _todayCash, value); }
 
+        private double _todayRecoveredCredit;
+        public double TodayRecoveredCredit { get => _todayRecoveredCredit; set => SetProperty(ref _todayRecoveredCredit, value); }
+
+        private double _todaySalesCash;
+        public double TodaySalesCash { get => _todaySalesCash; set => SetProperty(ref _todaySalesCash, value); }
+
+        private double _todayReturns;
+        public double TodayReturns { get => _todayReturns; set => SetProperty(ref _todayReturns, value); }
+
+        private double _todayCashRefunds;
+        public double TodayCashRefunds { get => _todayCashRefunds; set => SetProperty(ref _todayCashRefunds, value); }
+
+        private double _todayNetSales;
+        public double TodayNetSales { get => _todayNetSales; set => SetProperty(ref _todayNetSales, value); }
+
+        private double _todayCashInHand;
+        public double TodayCashInHand { get => _todayCashInHand; set => SetProperty(ref _todayCashInHand, value); }
+
         private int _totalProducts;
         public int TotalProducts { get => _totalProducts; set => SetProperty(ref _totalProducts, value); }
 
@@ -66,7 +84,13 @@ namespace GroceryPOS.ViewModels
             TodaySales = _billService.GetTodayTotal();
             TodaySaleCount = _billService.GetTodayBillCount();
             TodayCredit = _billService.GetTodayTotalCredit();
-            TodayCash = _billService.GetTodayTotalCash();
+            TodaySalesCash = _billService.GetTodayTotalCash();
+            TodayRecoveredCredit = _billService.GetTodayRecoveredCredit();
+            TodayCashRefunds = _billService.GetTodayCashRefunded();
+            TodayCashInHand = TodaySalesCash + TodayRecoveredCredit - TodayCashRefunds;
+
+            TodayReturns = _billService.GetTodayReturnsTotal();
+            TodayCash = TodaySalesCash + TodayRecoveredCredit; // This used to be total cash received, keeping it for backward compat if needed, but UI will use TodayCashInHand
             TotalProducts = _itemService.GetTotalItemCount();
             LowStockCount = _stockService.GetLowStockCount();
 

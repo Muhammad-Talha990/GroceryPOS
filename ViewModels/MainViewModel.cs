@@ -98,7 +98,6 @@ namespace GroceryPOS.ViewModels
                 "Reports"      => _serviceProvider.GetRequiredService<ReportsViewModel>(),
                 "SupplierBills"=> _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
                 "Returns"      => RefreshReturnVM(),
-                "PendingPrints"=> _serviceProvider.GetRequiredService<PendingPrintsViewModel>(),
                 "Customers"    => CreateCustomerManagementVM(),
                 "CustomerLedger" => CreateCustomerLedgerVM(PendingLedgerCustomerId),
                 _ => _serviceProvider.GetRequiredService<DashboardViewModel>()

@@ -19,6 +19,8 @@ namespace GroceryPOS.ViewModels
         private readonly CustomerService _customerService;
         private readonly PrintService _printService;
         private readonly AuthService _authService;
+        private readonly IStockService _stockService;
+        private readonly IReturnService _returnService;
 
         // ── Selected customer ──
         private Customer? _customer;
@@ -96,9 +98,24 @@ namespace GroceryPOS.ViewModels
             try
             {
                 var history = _creditService.GetPaymentHistory(SelectedBill.BillId);
+                
+                double subsequentPaymentsTotal = history.Sum(h => h.AmountPaid);
+                double initialPayment = Math.Round(SelectedBill.PaidAmount - subsequentPaymentsTotal, 2);
+
                 foreach (var p in history)
                 {
                     PaymentHistory.Add(p);
+                }
+
+                if (initialPayment > 0)
+                {
+                    PaymentHistory.Add(new CreditPayment
+                    {
+                        BillId = SelectedBill.BillId,
+                        AmountPaid = initialPayment,
+                        PaidAt = SelectedBill.BillDateTime,
+                        Note = "Initial Payment (At checkout)"
+                    });
                 }
             }
             catch (Exception ex)
@@ -150,12 +167,17 @@ namespace GroceryPOS.ViewModels
         public event Action? GoBackRequested;
         public ICommand GoBackCommand { get; }
 
-        public CustomerLedgerViewModel(CreditService creditService, CustomerService customerService, PrintService printService, AuthService authService)
+        public CustomerLedgerViewModel(CreditService creditService, CustomerService customerService, PrintService printService, AuthService authService, IStockService stockService, IReturnService returnService)
         {
             _creditService  = creditService;
             _customerService = customerService;
             _printService = printService;
             _authService = authService;
+            _stockService = stockService;
+            _returnService = returnService;
+
+            // Real-time refresh whenever stock/billing events occur
+            _stockService.StockChanged += OnDataChanged;
 
             RefreshCommand          = new RelayCommand(_ => Refresh());
             OpenPaymentPanelCommand = new RelayCommand(obj => OpenPaymentPanel(obj as Bill));
@@ -177,6 +199,12 @@ namespace GroceryPOS.ViewModels
         {
             try
             {
+                // Reset UI state from any previous customer
+                SelectedBill = null;
+                IsPaymentPanelOpen = false;
+                IsBillDetailOpen = false;
+                StatusMessage = string.Empty;
+
                 Customer = _customerService.GetCustomerById(customerId);
                 if (Customer == null)
                 {
@@ -272,11 +300,17 @@ namespace GroceryPOS.ViewModels
                     return;
                 }
 
+                // Capture details before the service call, as it triggers a refresh that nulls SelectedBill
+                string invoiceNumber = SelectedBill.InvoiceNumber;
+
                 _creditService.RecordPayment(SelectedBill.BillId, amount, PaymentNote);
+
+                StatusMessage = $"✓ Payment of Rs. {amount:N2} recorded successfully for Bill #{invoiceNumber}.";
+                MessageBox.Show(StatusMessage, "Payment Recorded", MessageBoxButton.OK, MessageBoxImage.Information);
+                OnPropertyChanged(nameof(StatusMessage));
 
                 ClosePaymentPanel();
                 LoadLedger();
-                StatusMessage = $"✓ Payment of Rs. {amount:N2} recorded successfully.";
             }
             catch (Exception ex)
             {
@@ -284,17 +318,66 @@ namespace GroceryPOS.ViewModels
                 AppLogger.Error("CustomerLedgerViewModel.RecordPayment failed", ex);
             }
         }
-        private void ViewBill(Bill? bill)
+        private async void ViewBill(Bill? bill)
         {
             if (bill == null) return;
+
+            if (bill.IsReturn && bill.ParentBillId.HasValue)
+            {
+                try 
+                {
+                    var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
+                    bill.ParentBill = original;
+                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
+                    
+                    double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
+                    bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Failed to fetch return metadata for view (Ledger)", ex);
+                }
+            }
+
             SelectedBill = bill;
             IsBillDetailOpen = true;
         }
 
-        private void PrintBill(Bill? bill)
+        private async void PrintBill(Bill? bill)
         {
             if (bill == null) return;
-            _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
+
+            if (bill.IsReturn && bill.ParentBillId.HasValue && bill.ParentBill == null)
+            {
+                try 
+                {
+                    var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
+                    bill.ParentBill = original;
+                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
+
+                    double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
+                    bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Failed to fetch return metadata for print (Ledger)", ex);
+                }
+            }
+            
+            bool isOnline = _printService.IsPrinterOnline();
+
+            if (isOnline)
+            {
+                bool printSuccess = _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
+                if (!printSuccess)
+                {
+                    System.Windows.MessageBox.Show("Failed to communicate with the printer. Please check the connection.", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                }
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("Printer is currently unavailable or offline.\nPlease ensure the printer is connected and turned on.", "Printer Offline", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
         }
 
         private void CloseBillDetail()
@@ -305,6 +388,19 @@ namespace GroceryPOS.ViewModels
         private void CloseSidebar()
         {
             SelectedBill = null;
+        }
+
+        private void OnDataChanged()
+        {
+            if (Customer != null)
+                Dispatch(() => LoadLedger());
+        }
+
+        public override void Dispose()
+        {
+            if (_stockService != null)
+                _stockService.StockChanged -= OnDataChanged;
+            base.Dispose();
         }
     }
 }

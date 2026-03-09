@@ -143,6 +143,8 @@ namespace GroceryPOS.Services
 
         public double GetTodayTotalCash() => _billRepo.GetTodayTotalPaid();
 
+        public double GetTodayRecoveredCredit() => _billRepo.GetTodayRecoveredCredit();
+
         public Bill? GetBillById(int billId) => _billRepo.GetById(billId);
 
         public Bill? GetLatestBillByCustomer(int customerId) => _billRepo.GetLatestBillByCustomerId(customerId);
@@ -154,5 +156,11 @@ namespace GroceryPOS.Services
             int nextId = _billRepo.GetNextBillId();
             return nextId.ToString("D5");
         }
+
+        // ── Return Stats ──────────────────────────────
+        public double GetTodayReturnsTotal()  => _billRepo.GetTodayReturnsTotal();
+        public double GetTodayCashRefunded()  => _billRepo.GetTodayCashRefunded();
+        public double GetTodayNetSales()      => GetTodayTotal() - GetTodayReturnsTotal();
+        public List<Bill> GetSalesOnlyByDateRange(DateTime from, DateTime to) => _billRepo.GetSalesOnlyByDateRange(from, to);
     }
 }

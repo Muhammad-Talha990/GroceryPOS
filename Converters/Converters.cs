@@ -68,8 +68,8 @@ namespace GroceryPOS.Converters
         {
             string status = value?.ToString() ?? string.Empty;
             if (status.StartsWith("✓")) return System.Windows.Media.Brushes.Green;
-            if (status.StartsWith("✗") || status.Contains("Error") || status.Contains("failed")) return System.Windows.Media.Brushes.Red;
-            return System.Windows.Media.Brushes.SteelBlue;
+            if (status.StartsWith("✗") || status.Contains("Error") || status.Contains("failed") || status.StartsWith("⚠")) return System.Windows.Media.Brushes.Red;
+            return System.Windows.Media.Brushes.Black;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -147,5 +147,21 @@ namespace GroceryPOS.Converters
             };
         }
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+    public class AbsoluteValueConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is double d) return Math.Abs(d);
+            if (value is int i) return Math.Abs(i);
+            if (value is decimal dc) return Math.Abs(dc);
+            if (value is float f) return Math.Abs(f);
+            return value;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

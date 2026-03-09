@@ -17,17 +17,20 @@ namespace GroceryPOS.Services
         private readonly BillReturnRepository _returnRepo;
         private readonly DataCacheService _cache;
         private readonly IStockService _stockService;
+        private readonly CreditPaymentRepository _creditRepo;
 
         public ReturnService(
             BillRepository billRepo, 
             BillReturnRepository returnRepo, 
             DataCacheService cache, 
-            IStockService stockService)
+            IStockService stockService,
+            CreditPaymentRepository creditRepo)
         {
             _billRepo = billRepo;
             _returnRepo = returnRepo;
             _cache = cache;
             _stockService = stockService;
+            _creditRepo = creditRepo;
         }
 
         public async Task<Bill?> GetBillForReturn(int billId)
@@ -116,24 +119,45 @@ namespace GroceryPOS.Services
                     if (!returnBillItems.Any())
                         throw new BusinessException("No valid items to return.");
 
+                    // ── Compute how much is credit reduction vs actual cash refund ──
+                    double returnValue     = Math.Abs(subTotal);
+                    double creditToReduce  = Math.Min(originalBill.RemainingAmount, returnValue);
+                    double cashRefund      = Math.Round(returnValue - creditToReduce, 2);
+                    creditToReduce         = Math.Round(creditToReduce, 2);
+
+                    // Determine return outcome type for UI labelling
+                    string returnOutcome = creditToReduce > 0 && cashRefund > 0 ? "Mixed"
+                                        : creditToReduce > 0                   ? "CreditOnly"
+                                                                               : "CashOnly";
+
                     var returnBill = new Bill
                     {
-                        BillDateTime = DateTime.Now,
-                        SubTotal = subTotal,
-                        DiscountAmount = 0,
-                        TaxAmount = 0,
-                        GrandTotal = subTotal,
-                        CashReceived = 0,
-                        ChangeGiven = 0,
-                        UserId = userId,
-                        CustomerId = originalBill.CustomerId,
-                        Type = "Return",
-                        ParentBillId = originalBillId,
-                        Status = "Return processed"
+                        BillDateTime    = DateTime.Now,
+                        SubTotal        = subTotal,
+                        DiscountAmount  = 0,
+                        TaxAmount       = 0,
+                        GrandTotal      = subTotal,
+                        // CashReceived stores the actual cash handed back to the customer
+                        CashReceived    = cashRefund,
+                        // PaidAmount mirrors cash refund for accounting symmetry
+                        PaidAmount      = cashRefund,
+                        ChangeGiven     = 0,
+                        UserId          = userId,
+                        CustomerId      = originalBill.CustomerId,
+                        Type            = "Return",
+                        ParentBillId    = originalBillId,
+                        // Status encodes the outcome type so callers don't need extra queries
+                        Status          = returnOutcome
                     };
 
                     var savedReturnBill = _billRepo.SaveBillInternal(returnBill, returnBillItems, conn, txn);
-                    
+
+                    // Tag the saved return bill with outcome metadata for in-memory use
+                    savedReturnBill.CashReceived   = cashRefund;
+                    savedReturnBill.PaidAmount     = cashRefund;
+                    savedReturnBill.RemainingAmount = creditToReduce; // repurposed: credit reduced
+                    savedReturnBill.Status         = returnOutcome;
+
                     // Legacy record keeping for extra audit safety
                     foreach (var returnItem in items.Where(i => i.Quantity > 0))
                     {
@@ -147,6 +171,36 @@ namespace GroceryPOS.Services
                             ReturnBillId = savedReturnBill.InvoiceNumber
                         };
                         _returnRepo.Insert(billReturn, conn, txn);
+                    }
+
+                    // ── Atomically Offset Credit INSIDE the transaction ──
+                    if (creditToReduce > 0)
+                    {
+                        double newRemaining = Math.Round(Math.Max(0, originalBill.RemainingAmount - creditToReduce), 2);
+                        double newPaid      = Math.Round(originalBill.PaidAmount + creditToReduce, 2);
+                        string newStatus    = newRemaining <= 0 ? "Paid"
+                                           : newPaid > 0       ? "Partial"
+                                                               : "Unpaid";
+
+                        using var creditCmd = conn.CreateCommand();
+                        creditCmd.Transaction = txn;
+                        creditCmd.CommandText = @"
+                            UPDATE Bill
+                            SET RemainingAmount = @rem, PaidAmount = @paid, PaymentStatus = @status
+                            WHERE bill_id = @id;
+
+                            INSERT INTO CreditPayments (BillId, AmountPaid, PaidAt, Note)
+                            VALUES (@id, @offset, @at, @note);";
+                        creditCmd.Parameters.AddWithValue("@rem",    newRemaining);
+                        creditCmd.Parameters.AddWithValue("@paid",   newPaid);
+                        creditCmd.Parameters.AddWithValue("@status", newStatus);
+                        creditCmd.Parameters.AddWithValue("@id",     originalBill.BillId);
+                        creditCmd.Parameters.AddWithValue("@offset", creditToReduce);
+                        creditCmd.Parameters.AddWithValue("@at",     DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        creditCmd.Parameters.AddWithValue("@note",   $"Return offset — Return Bill #{savedReturnBill.InvoiceNumber}");
+                        creditCmd.ExecuteNonQuery();
+
+                        AppLogger.Info($"Return credit offset: Bill #{originalBill.BillId} RemainingAmount {originalBill.RemainingAmount} → {newRemaining} (offset Rs.{creditToReduce}, cashRefund Rs.{cashRefund})");
                     }
 
                     txn.Commit();

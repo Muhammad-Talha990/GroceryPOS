@@ -1,5 +1,4 @@
-# Build results
-[Dd]ebug/
+## [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
@@ -14,39 +13,36 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-# Visual Studio 2015/2017/2019/2022 cache/options directory
+# Visual Studio files
 .vs/
 .vscode/
-
-# Visual Studio Code
-.vscode/
-
-# User-specific files
-*.rsuser
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
-
-# Build results
-*.dll
-*.exe
-*.pdb
-*.apk
-*.aar
-*.ipa
-*.dSYM
-*.nupkg
-*.snupkg
 
 # Database files
 *.db
 *.db-shm
 *.db-wal
 
-# Logs
+# Logs and temporary files
 *.log
-build_*.txt
-build_*.log
-errors.txt
-build_errors*.txt
+error.txt
+run_error.txt
+build_errors.txt
+build_output.txt
+build.log
+build2.log
+
+# .NET Specific
+*.dll
+*.exe
+*.pdb
+*.nupkg
+*.snupkg
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini

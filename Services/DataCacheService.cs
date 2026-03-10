@@ -19,7 +19,8 @@ namespace GroceryPOS.Services
         private readonly UserRepository _userRepo;
 
         // ── In-Memory Collections ──
-        private readonly ConcurrentDictionary<string, Item> _itemCache = new();
+        private readonly ConcurrentDictionary<int, Item> _itemCache = new();
+        private readonly ConcurrentDictionary<string, int> _barcodeIndex = new(StringComparer.OrdinalIgnoreCase);
         private List<User> _userCache = new();
 
         public DataCacheService(ItemRepository itemRepo, UserRepository userRepo)
@@ -41,9 +42,12 @@ namespace GroceryPOS.Services
                 // Load Items
                 var items = _itemRepo.GetAll();
                 _itemCache.Clear();
+                _barcodeIndex.Clear();
                 foreach (var item in items)
                 {
-                    _itemCache.TryAdd(item.ItemId, item);
+                    _itemCache.TryAdd(item.Id, item);
+                    if (!string.IsNullOrWhiteSpace(item.Barcode))
+                        _barcodeIndex.TryAdd(item.Barcode, item.Id);
                 }
 
                 // Load Users
@@ -62,9 +66,17 @@ namespace GroceryPOS.Services
         //  ITEM CACHE METHODS
         // ────────────────────────────────────────────
 
+        public Item? GetItemById(int id)
+        {
+            return _itemCache.TryGetValue(id, out var item) ? item : null;
+        }
+
         public Item? GetItemByBarcode(string barcode)
         {
-            return _itemCache.TryGetValue(barcode, out var item) ? item : null;
+            if (string.IsNullOrWhiteSpace(barcode)) return null;
+            if (_barcodeIndex.TryGetValue(barcode, out var id))
+                return _itemCache.TryGetValue(id, out var item) ? item : null;
+            return null;
         }
 
         public List<Item> GetAllItems()
@@ -75,21 +87,27 @@ namespace GroceryPOS.Services
         public void UpdateItemInCache(Item item)
         {
             // If item exists, preserve its current stock quantity before updating
-            if (_itemCache.TryGetValue(item.ItemId, out var existing))
+            if (_itemCache.TryGetValue(item.Id, out var existing))
             {
+                // Remove old barcode from index if it changed
+                if (!string.IsNullOrWhiteSpace(existing.Barcode))
+                    _barcodeIndex.TryRemove(existing.Barcode, out _);
                 item.StockQuantity = existing.StockQuantity;
             }
-            _itemCache[item.ItemId] = item;
+            _itemCache[item.Id] = item;
+            if (!string.IsNullOrWhiteSpace(item.Barcode))
+                _barcodeIndex[item.Barcode] = item.Id;
         }
 
-        public void RemoveItemFromCache(string barcode)
+        public void RemoveItemFromCache(int id)
         {
-            _itemCache.TryRemove(barcode, out _);
+            if (_itemCache.TryRemove(id, out var removed) && !string.IsNullOrWhiteSpace(removed.Barcode))
+                _barcodeIndex.TryRemove(removed.Barcode, out _);
         }
 
-        public void UpdateStockInCache(string barcode, double change)
+        public void UpdateStockInCache(int id, double change)
         {
-            if (_itemCache.TryGetValue(barcode, out var item))
+            if (_itemCache.TryGetValue(id, out var item))
             {
                 item.StockQuantity += change;
             }

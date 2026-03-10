@@ -139,5 +139,7 @@ namespace GroceryPOS.Models
             get => _isBillDetailOpen;
             set => SetProperty(ref _isBillDetailOpen, value);
         }
+
+        public int? LoadedHistoryBillId { get; set; }
     }
 }

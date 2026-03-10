@@ -10,7 +10,7 @@ namespace GroceryPOS.Models
         /// <summary>Primary Key (Auto Increment).</summary>
         public int Id { get; set; }
 
-        /// <summary>The product barcode (Item.itemId).</summary>
+        /// <summary>The product barcode (Item.Barcode).</summary>
         public string ProductId { get; set; } = string.Empty;
 
         /// <summary>The linked Supplier Bill ID (SUP-YYYY-XXXX).</summary>

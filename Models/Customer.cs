@@ -5,35 +5,39 @@ namespace GroceryPOS.Models
 {
     /// <summary>
     /// Represents a customer in the system.
-    /// Maps to the "Customers" table.
+    /// Maps to the "Customers" table in the normalized 3NF schema.
     /// </summary>
     public class Customer
     {
         public int CustomerId { get; set; }
 
-        /// <summary>Full name of the customer (stored in FullName column).</summary>
+        /// <summary>Full name of the customer.</summary>
         public string FullName { get; set; } = string.Empty;
 
         /// <summary>Backward-compat alias — maps to FullName.</summary>
-        public string Name
-        {
-            get => FullName;
-            set => FullName = value;
-        }
+        public string Name { get => FullName; set => FullName = value; }
 
-        public string PrimaryPhone { get; set; } = string.Empty;
+        /// <summary>Main phone number.</summary>
+        public string Phone { get; set; } = string.Empty;
+
+        /// <summary>Backward-compat alias — maps to Phone.</summary>
+        public string PrimaryPhone { get => Phone; set => Phone = value; }
+
+        /// <summary>Deprecated: mapped to null for now or consolidation.</summary>
         public string? SecondaryPhone { get; set; }
+
+        /// <summary>Full address.</summary>
         public string? Address { get; set; }
+
+        /// <summary>Deprecated: use Address.</summary>
         public string? Address2 { get; set; }
+        /// <summary>Deprecated: use Address.</summary>
         public string? Address3 { get; set; }
 
         /// <summary>False = soft-deleted. Only active customers appear in billing search.</summary>
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;
-
-        /// <summary>Navigation — other phones (not stored in Customers table).</summary>
-        public List<CustomerPhone> OtherPhones { get; set; } = new();
 
         // ── Calculated Properties ──
         public int BillCount { get; set; }

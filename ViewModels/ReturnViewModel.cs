@@ -153,6 +153,7 @@ namespace GroceryPOS.ViewModels
                         var vm = new ReturnItemViewModel
                         {
                             ItemId = item.ItemId,
+                            Barcode = item.Barcode,
                             Description = item.ItemDescription,
                             OriginalQuantity = item.Quantity,
                             AlreadyReturned = alreadyReturned,
@@ -219,7 +220,7 @@ namespace GroceryPOS.ViewModels
 
                 // ── Populate result properties from return bill metadata ──
                 double cashRefund       = returnBill.CashReceived;
-                double creditAdjusted   = returnBill.RemainingAmount; // repurposed field from service
+                double creditAdjusted   = returnBill.RemainingDueAfterThisReturn;
                 string outcomeType      = returnBill.Status; // "CashOnly" | "CreditOnly" | "Mixed"
 
                 ReturnResultCashRefund    = cashRefund;
@@ -236,16 +237,15 @@ namespace GroceryPOS.ViewModels
                 };
                 StatusMessage = msg;
                 
-                // ── Automated Unified Printing ──
+                // ── Print Return-Only Receipt ──
                 try
                 {
-                    var historyData = await _returnService.GetBillWithReturnHistory(OriginalBill.BillId);
-                    _printService.PrintUnifiedReturnReceipt(OriginalBill, returnBill, historyData.Returns, _authService.CurrentUser?.FullName ?? "Cashier");
+                    _printService.PrintReturnOnlyReceipt(OriginalBill, returnBill, _authService.CurrentUser?.FullName ?? "Cashier");
                 }
                 catch (Exception pex)
                 {
                     StatusMessage += " (Print failed)";
-                    AppLogger.Error("Unified return print failed", pex);
+                    AppLogger.Error("Return receipt print failed", pex);
                 }
 
                 // ── Refresh the current view instead of clearing it ──
@@ -280,13 +280,14 @@ namespace GroceryPOS.ViewModels
     public class ReturnItemViewModel : BaseViewModel
     {
         public string ItemId { get; set; } = string.Empty;
+        public string? Barcode { get; set; }
         public string Description { get; set; } = string.Empty;
-        public int OriginalQuantity { get; set; }
-        public int AlreadyReturned { get; set; }
-        public int RemainingQuantity { get; set; }
+        public double OriginalQuantity { get; set; }
+        public double AlreadyReturned { get; set; }
+        public double RemainingQuantity { get; set; }
 
-        private int _returnQuantity;
-        public int ReturnQuantity
+        private double _returnQuantity;
+        public double ReturnQuantity
         {
             get => _returnQuantity;
             set
@@ -306,6 +307,6 @@ namespace GroceryPOS.ViewModels
         }
 
         public decimal UnitPrice { get; set; }
-        public decimal TotalPrice => ReturnQuantity * UnitPrice;
+        public decimal TotalPrice => (decimal)ReturnQuantity * UnitPrice;
     }
 }

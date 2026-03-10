@@ -403,7 +403,7 @@ namespace GroceryPOS.ViewModels
                         csv.AppendLine("Barcode,Product Name,Category,Current Stock,Threshold");
                         foreach (var i in LowStockReport)
                         {
-                            csv.AppendLine($"{i.ItemId},\"{i.Description}\",\"{i.ItemCategory}\",{i.StockQuantity},{i.MinStockThreshold}");
+                            csv.AppendLine($"{i.Barcode},\"{i.Description}\",\"{i.ItemCategory}\",{i.StockQuantity},{i.MinStockThreshold}");
                         }
                         csv.AppendLine($"TOTAL ITEMS,{LowStockReport.Count},,,,");
                     }

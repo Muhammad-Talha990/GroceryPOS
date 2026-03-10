@@ -30,6 +30,8 @@ namespace GroceryPOS.Services
 
         public List<Item> GetAllItems() => _cache.GetAllItems();
 
+        public Item? GetItemById(int id) => _cache.GetItemById(id);
+
         public Item? GetItemByBarcode(string barcode) => _cache.GetItemByBarcode(barcode);
 
         public List<Item> SearchItems(string searchTerm)
@@ -54,10 +56,13 @@ namespace GroceryPOS.Services
         {
             ValidateItem(item);
 
-            // Check for duplicate barcode in cache (faster)
-            var existing = _cache.GetItemByBarcode(item.ItemId);
-            if (existing != null)
-                throw new InvalidOperationException($"An item with barcode '{item.ItemId}' already exists ({existing.Description}).");
+            // Check for duplicate barcode in cache (only if barcode provided)
+            if (!string.IsNullOrWhiteSpace(item.Barcode))
+            {
+                var existing = _cache.GetItemByBarcode(item.Barcode);
+                if (existing != null)
+                    throw new InvalidOperationException($"An item with barcode '{item.Barcode}' already exists ({existing.Description}).");
+            }
 
             _repo.Add(item);
 
@@ -67,36 +72,32 @@ namespace GroceryPOS.Services
         }
 
         /// <summary>Updates an existing item after validation.</summary>
-        public void UpdateItem(Item item, string originalBarcode = null)
+        public void UpdateItem(Item item, string? originalBarcode = null)
         {
             ValidateItem(item);
             
             // if we are changing the barcode, check for collisions
-            if (!string.IsNullOrEmpty(originalBarcode) && originalBarcode != item.ItemId)
+            if (!string.IsNullOrEmpty(item.Barcode) && !string.IsNullOrEmpty(originalBarcode) && originalBarcode != item.Barcode)
             {
-               var existing = _cache.GetItemByBarcode(item.ItemId);
-               if (existing != null)
-                   throw new InvalidOperationException($"An item with barcode '{item.ItemId}' already exists.");
+               var existing = _cache.GetItemByBarcode(item.Barcode);
+               if (existing != null && existing.Id != item.Id)
+                   throw new InvalidOperationException($"An item with barcode '{item.Barcode}' already exists.");
             }
 
             _repo.Update(item, originalBarcode);
 
-            // Sync Cache - if the barcode changed, remove the old one first
-            if (!string.IsNullOrEmpty(originalBarcode) && originalBarcode != item.ItemId)
-            {
-                _cache.RemoveItemFromCache(originalBarcode);
-            }
+            // Sync Cache
             _cache.UpdateItemInCache(item);
             _stockService.NotifyChanged();
         }
 
         /// <summary>Deletes an item by barcode. Throws on FK constraint (linked to bills).</summary>
-        public void DeleteItem(string barcode)
+        public void DeleteItem(int id)
         {
-            _repo.Delete(barcode);
+            _repo.Delete(id);
 
             // Sync Cache
-            _cache.RemoveItemFromCache(barcode);
+            _cache.RemoveItemFromCache(id);
             _stockService.NotifyChanged();
         }
 
@@ -106,9 +107,6 @@ namespace GroceryPOS.Services
 
         private void ValidateItem(Item item)
         {
-            if (string.IsNullOrWhiteSpace(item.ItemId))
-                throw new ArgumentException("Barcode (ItemId) is required.");
-
             if (string.IsNullOrWhiteSpace(item.Description))
                 throw new ArgumentException("Item description is required.");
 

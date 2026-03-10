@@ -85,7 +85,7 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="120" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="120" IsReadOnly="True"/>
                         <DataGridTextColumn Header="Sold" Binding="{Binding OriginalQuantity}" Width="65" IsReadOnly="True">
                              <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">

@@ -59,7 +59,7 @@
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Product Name" Binding="{Binding Description}" Width="2*"/>
-                            <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="1.2*"/>
+                            <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="1.2*"/>
                             <DataGridTextColumn Header="Quantity" Binding="{Binding StockQuantity}" Width="80">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">

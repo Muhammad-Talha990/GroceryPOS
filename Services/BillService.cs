@@ -44,7 +44,7 @@ namespace GroceryPOS.Services
         /// Pass less than grandTotal for a credit/udhar sale (registered customers only).
         /// </param>
         public Bill CompleteBill(int? userId, int? customerId, List<BillDescription> items,
-            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1, string? billingAddress = null)
+            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1, string? billingAddress = null, string paymentMethod = "Cash")
         {
             // ── Validate inputs ──
             if (items == null || items.Count == 0)
@@ -56,11 +56,21 @@ namespace GroceryPOS.Services
             if (taxAmount < 0)
                 throw new ArgumentException("Tax amount cannot be negative.");
 
-            // ── Validate stock availability ──
+            // ── Validate stock and resolve internal IDs ──
             foreach (var item in items)
             {
-                if (!_stockService.IsStockAvailable(item.ItemId, item.Quantity, out double available))
-                    throw new InvalidOperationException($"Insufficient stock for item {item.ItemId}. Available: {available}, Required: {item.Quantity}");
+                // ItemId is now the string form of the integer DB Id
+                if (!int.TryParse(item.ItemId, out var internalId))
+                    throw new InvalidOperationException($"Invalid product identifier '{item.ItemId}'.");
+
+                item.ItemInternalId = internalId;
+
+                var cachedItem = _cache.GetItemById(internalId);
+                if (cachedItem == null)
+                    throw new InvalidOperationException($"Item with ID '{item.ItemId}' not found.");
+
+                if (!_stockService.IsStockAvailable(internalId, item.Quantity, out double available))
+                    throw new InvalidOperationException($"Insufficient stock for item {cachedItem.Description}. Available: {available}, Required: {item.Quantity}");
             }
 
             // ── Calculate totals per business rules ──
@@ -100,19 +110,17 @@ namespace GroceryPOS.Services
             // ── Build Bill object ──
             var bill = new Bill
             {
-                BillDateTime    = DateTime.Now,
+                CreatedAt       = DateTime.Now,
                 SubTotal        = subTotal,
                 DiscountAmount  = discountAmount,
                 TaxAmount       = taxAmount,
-                GrandTotal      = grandTotal,
                 CashReceived    = cashReceived,
                 ChangeGiven     = Math.Max(0, changeGiven),
                 UserId          = userId,
                 CustomerId      = customerId,
                 PaidAmount      = paidAmount,
-                RemainingAmount = remainingAmount,
-                PaymentStatus   = paymentStatus,
-                BillingAddress  = billingAddress
+                BillingAddress  = billingAddress,
+                PaymentMethod   = paymentMethod
             };
 
             // ── Save atomically (bill + items + stock) ──
@@ -120,7 +128,7 @@ namespace GroceryPOS.Services
 
             // ── Update Cache & UI after successful commit ──
             foreach (var item in items)
-                _cache.UpdateStockInCache(item.ItemId, -item.Quantity);
+                _cache.UpdateStockInCache(item.ItemInternalId, -item.Quantity);
 
             _stockService.NotifyChanged();
 

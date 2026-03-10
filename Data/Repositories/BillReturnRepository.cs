@@ -12,52 +12,56 @@ namespace GroceryPOS.Data.Repositories
     public class BillReturnRepository
     {
         /// <summary>
-        /// Inserts a new return record.
-        /// Assumes the connection/transaction is managed by the caller if needed.
+        /// Inserts a new return record and its items.
         /// </summary>
-        public void Insert(BillReturn billReturn, SqliteConnection? conn = null, SqliteTransaction? txn = null)
+        public int InsertReturnHeader(int billId, double refundAmount, SqliteConnection conn, SqliteTransaction txn)
         {
-            bool manageConnection = (conn == null);
-            if (manageConnection) conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = txn;
+            cmd.CommandText = @"
+                INSERT INTO BillReturns (BillId, RefundAmount, ReturnedAt)
+                VALUES (@billId, @amount, @at);
+                SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("@billId", billId);
+            cmd.Parameters.AddWithValue("@amount", refundAmount);
+            cmd.Parameters.AddWithValue("@at", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
 
-            try
-            {
-                using var cmd = conn!.CreateCommand();
-                if (txn != null) cmd.Transaction = txn;
-
-                cmd.CommandText = @"
-                    INSERT INTO BILL_RETURNS (bill_id, product_id, return_quantity, original_bill_date, return_date, return_bill_id)
-                    VALUES (@billId, @productId, @qty, @origDate, @retDate, @retBillId);
-                ";
-                cmd.Parameters.AddWithValue("@billId", billReturn.BillId);
-                cmd.Parameters.AddWithValue("@productId", billReturn.ProductId);
-                cmd.Parameters.AddWithValue("@qty", billReturn.ReturnQuantity);
-                cmd.Parameters.AddWithValue("@origDate", billReturn.OriginalBillDate);
-                cmd.Parameters.AddWithValue("@retDate", billReturn.ReturnDate);
-                cmd.Parameters.AddWithValue("@retBillId", billReturn.ReturnBillId);
-
-                cmd.ExecuteNonQuery();
-            }
-            finally
-            {
-                if (manageConnection) conn?.Dispose();
-            }
+        public void InsertReturnItem(int returnId, int billItemId, int quantity, double unitPrice, SqliteConnection conn, SqliteTransaction txn)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = txn;
+            cmd.CommandText = @"
+                INSERT INTO BillReturnItems (ReturnId, BillItemId, Quantity, UnitPrice)
+                VALUES (@retId, @biId, @qty, @price);
+                
+                INSERT INTO InventoryLogs (ItemId, QuantityChange, ChangeType)
+                SELECT ItemId, @qty, 'Return' FROM BillItems WHERE BillItemId = @biId;";
+            
+            cmd.Parameters.AddWithValue("@retId", returnId);
+            cmd.Parameters.AddWithValue("@biId", billItemId);
+            cmd.Parameters.AddWithValue("@qty", quantity);
+            cmd.Parameters.AddWithValue("@price", unitPrice);
+            cmd.ExecuteNonQuery();
         }
 
         /// <summary>
         /// Calculates the total quantity already returned for a specific product in a bill.
         /// </summary>
-        public int GetTotalReturnedQuantity(int billId, string productId)
+        public int GetTotalReturnedQuantity(int billId, int itemId)
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COALESCE(SUM(return_quantity), 0) 
-                FROM BILL_RETURNS 
-                WHERE bill_id = @billId AND product_id = @productId;
-            ";
+                SELECT COALESCE(SUM(bri.Quantity), 0) 
+                FROM BillReturnItems bri
+                JOIN BillReturns br ON bri.ReturnId = br.ReturnId
+                JOIN BillItems bi ON bri.BillItemId = bi.BillItemId
+                WHERE br.BillId = @billId AND bi.ItemId = @itemId;";
             cmd.Parameters.AddWithValue("@billId", billId);
-            cmd.Parameters.AddWithValue("@productId", productId);
+            cmd.Parameters.AddWithValue("@itemId", itemId);
 
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
@@ -71,26 +75,28 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT br.*, i.Description as ProductDesc
-                FROM BILL_RETURNS br
-                LEFT JOIN Item i ON br.product_id = i.itemId
-                WHERE br.bill_id = @billId;
-            ";
+                SELECT br.ReturnId, br.BillId, br.RefundAmount, br.ReturnedAt,
+                       bri.Quantity, bri.UnitPrice, i.Barcode, i.Description
+                FROM BillReturns br
+                JOIN BillReturnItems bri ON br.ReturnId = bri.ReturnId
+                JOIN BillItems bi ON bri.BillItemId = bi.BillItemId
+                JOIN Items i ON bi.ItemId = i.ItemId
+                WHERE br.BillId = @billId
+                ORDER BY br.ReturnedAt DESC;";
             cmd.Parameters.AddWithValue("@billId", billId);
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                returns.Add(new BillReturn
+                returns.Add(new GroceryPOS.Models.BillReturn
                 {
-                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
-                    BillId = reader.GetInt32(reader.GetOrdinal("bill_id")),
-                    ProductId = reader.GetString(reader.GetOrdinal("product_id")),
-                    ReturnQuantity = reader.GetInt32(reader.GetOrdinal("return_quantity")),
-                    OriginalBillDate = reader.GetString(reader.GetOrdinal("original_bill_date")),
-                    ReturnDate = reader.GetString(reader.GetOrdinal("return_date")),
-                    ReturnBillId = reader.GetString(reader.GetOrdinal("return_bill_id")),
-                    ProductDescription = reader.IsDBNull(reader.GetOrdinal("ProductDesc")) ? "Unknown" : reader.GetString(reader.GetOrdinal("ProductDesc"))
+                    Id = reader.GetInt32(0),
+                    BillId = reader.GetInt32(1),
+                    RefundAmount = reader.GetDouble(2),
+                    ReturnDate = reader.GetString(3),
+                    ReturnQuantity = reader.GetInt32(4),
+                    ProductId = reader.GetString(6),
+                    ProductDescription = reader.GetString(7)
                 });
             }
             return returns;

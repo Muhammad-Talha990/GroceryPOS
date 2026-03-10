@@ -7,8 +7,11 @@ namespace GroceryPOS.Models
     /// </summary>
     public class CartItem : INotifyPropertyChanged
     {
-        /// <summary>Barcode (FK to Item.itemId).</summary>
+        /// <summary>Product ID (FK to Item.Id).</summary>
         public string ItemId { get; set; } = string.Empty;
+
+        /// <summary>Product barcode for display (may be empty).</summary>
+        public string? Barcode { get; set; }
 
         /// <summary>Item description for display.</summary>
         public string ItemDescription { get; set; } = string.Empty;
@@ -34,9 +37,9 @@ namespace GroceryPOS.Models
 
         public bool IsMaxQuantity => Quantity >= AvailableStock && AvailableStock > 0;
 
-        private int _quantity = 1;
+        private double _quantity = 1;
         /// <summary>Quantity in cart.</summary>
-        public int Quantity
+        public double Quantity
         {
             get => _quantity;
             set

@@ -255,7 +255,7 @@
                           RowStyle="{DynamicResource ModernDataGridRow}"
                           CellStyle="{DynamicResource ModernDataGridCell}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="150"/>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="150"/>
                         <DataGridTextColumn Header="Product Name" Binding="{Binding Description}" Width="*"/>
                         <DataGridTextColumn Header="Category" Binding="{Binding ItemCategory}" Width="150"/>
                         <DataGridTextColumn Header="Current Stock" Binding="{Binding StockQuantity}" Width="120"/>

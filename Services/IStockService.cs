@@ -19,6 +19,7 @@ namespace GroceryPOS.Services
         Task<bool> DeleteSupplyAsync(int stockId);
         
         bool IsStockAvailable(string barcode, double requiredQuantity, out double availableQuantity);
+        bool IsStockAvailable(int itemId, double requiredQuantity, out double availableQuantity);
         List<Item> GetLowStockItems();
         int GetLowStockCount();
     }

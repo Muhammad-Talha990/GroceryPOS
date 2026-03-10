@@ -5,11 +5,32 @@ using GroceryPOS.Helpers;
 namespace GroceryPOS.Data
 {
     /// <summary>
-    /// Creates the database schema (4 tables: User, Item, Bill, BillDescription)
-    /// and seeds default data on first run.
+    /// Creates and maintains the normalized (3NF) database schema for GroceryPOS.
+    /// 
+    /// Tables (10):
+    ///   1. Users          – System users (Admin / Cashier)
+    ///   2. Categories      – Product categories (lookup)
+    ///   3. Items           – Product catalog (PK = ItemId, Barcode optional + unique)
+    ///   4. Customers       – Registered customers with soft-delete
+    ///   5. Bills           – Sale headers (IMMUTABLE once saved)
+    ///   6. BillItems       – Sale line items (IMMUTABLE, surrogate PK)
+    ///   7. Payments        – Payment transaction log (Sale / Credit Payment / Refund)
+    ///   8. BillReturns     – Return headers (linked to original Bill)
+    ///   9. BillReturnItems – Return line items (linked to original BillItems)
+    ///  10. InventoryLogs   – Stock movement audit trail
+    ///
+    /// Normalization:
+    ///   - Stock is CALCULATED from SUM(InventoryLogs.QuantityChange), never stored on Items.
+    ///   - Bill totals are CALCULATED from BillItems, never stored on Bills.
+    ///   - All derived values live only in application models, not in the database.
+    ///
+    /// Safe to call on every application startup (CREATE IF NOT EXISTS + idempotent migrations).
     /// </summary>
     public static class DatabaseInitializer
     {
+        // Schema version — increment when adding migrations
+        private const int CurrentSchemaVersion = 4;
+
         /// <summary>
         /// Ensures all tables, indexes, and seed data exist.
         /// Safe to call on every application startup.
@@ -20,237 +41,221 @@ namespace GroceryPOS.Data
             {
                 using (var conn = DatabaseHelper.GetConnection())
                 {
-                    // ── Enable WAL for better performance ──
+                    // ── Enable WAL and Foreign Keys ──
                     Execute(conn, "PRAGMA journal_mode = WAL;");
+                    Execute(conn, "PRAGMA foreign_keys = ON;");
 
-                    // ══════════════════════════════════════════
-                    //  TABLE 1: User (authentication)
-                    // ══════════════════════════════════════════
+                    // ── Run migrations for existing databases ──
+                    MigrateIfNeeded(conn);
+
+                    // ────────────────────────────────────────
+                    //  TABLE 1: Users
+                    // ────────────────────────────────────────
                     Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS User (
-                            Id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                            Username    TEXT    NOT NULL UNIQUE,
-                            PasswordHash TEXT   NOT NULL,
-                            FullName    TEXT    NOT NULL,
-                            Role        TEXT    NOT NULL DEFAULT 'Cashier',
-                            IsActive    INTEGER NOT NULL DEFAULT 1,
-                            CreatedAt   TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+                        CREATE TABLE IF NOT EXISTS Users (
+                            Id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Username     TEXT    NOT NULL UNIQUE,
+                            PasswordHash TEXT    NOT NULL,
+                            FullName     TEXT    NOT NULL,
+                            Role         TEXT    NOT NULL DEFAULT 'Cashier'
+                                         CHECK(Role IN ('Admin', 'Cashier')),
+                            IsActive     INTEGER NOT NULL DEFAULT 1,
+                            CreatedAt    DATETIME DEFAULT CURRENT_TIMESTAMP
                         );
                     ");
 
-                    // ══════════════════════════════════════════
-                    //  TABLE 2: Item (inventory)
-                    // ══════════════════════════════════════════
+                    // ────────────────────────────────────────
+                    //  TABLE 2: Categories (Lookup)
+                    // ────────────────────────────────────────
                     Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS Item (
-                            itemId          TEXT    PRIMARY KEY,
-                            Description     TEXT    NOT NULL,
-                            CostPrice       REAL    NOT NULL,
-                            SalePrice       REAL    NOT NULL,
-                            ItemCategory    TEXT,
-                            StockQuantity   REAL    NOT NULL DEFAULT 0,
-                            MinStockThreshold REAL NOT NULL DEFAULT 10
+                        CREATE TABLE IF NOT EXISTS Categories (
+                            CategoryId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Name       TEXT    NOT NULL UNIQUE
                         );
                     ");
 
-                    // ══════════════════════════════════════════
-                    //  TABLE 3: Bill (sale header)
-                    // ══════════════════════════════════════════
+                    // ────────────────────────────────────────
+                    //  TABLE 3: Items (Product Catalog)
+                    //  - ItemId is the PRIMARY KEY (surrogate)
+                    //  - Barcode is OPTIONAL but UNIQUE if provided
+                    //  - Stock is NOT stored here; calculated from InventoryLogs
+                    // ────────────────────────────────────────
                     Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS Bill (
-                            bill_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                            BillDateTime    TEXT    NOT NULL,
-                            SubTotal        REAL    NOT NULL,
-                            DiscountAmount  REAL    DEFAULT 0,
-                            TaxAmount       REAL    DEFAULT 0,
-                            GrandTotal      REAL    NOT NULL,
-                            CashReceived    REAL,
-                            ChangeGiven     REAL,
-                            UserId          INTEGER,
-                            CustomerId      INTEGER,
-                            FOREIGN KEY (UserId) REFERENCES User(Id),
-                            FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId)
+                        CREATE TABLE IF NOT EXISTS Items (
+                            ItemId            INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Barcode           TEXT    UNIQUE,
+                            Description       TEXT    NOT NULL,
+                            CostPrice         REAL    NOT NULL CHECK(CostPrice >= 0),
+                            SalePrice         REAL    NOT NULL CHECK(SalePrice >= 0),
+                            CategoryId        INTEGER,
+                            MinStockThreshold REAL    NOT NULL DEFAULT 10,
+                            CreatedAt         DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (CategoryId) REFERENCES Categories(CategoryId)
+                                ON DELETE SET NULL
                         );
                     ");
 
-                    // ══════════════════════════════════════════
-                    //  TABLE 4: BillDescription (sale line items)
-                    // ══════════════════════════════════════════
-                    Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS BillDescription (
-                            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                            Bill_id     INTEGER NOT NULL,
-                            ItemId      TEXT    NOT NULL,
-                            Quantity    REAL    NOT NULL,
-                            UnitPrice   REAL    NOT NULL,
-                            TotalPrice  REAL    NOT NULL,
-                            FOREIGN KEY (Bill_id) REFERENCES Bill(bill_id) ON DELETE CASCADE,
-                            FOREIGN KEY (ItemId)  REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
-                        );
-                    ");
-
-                    // ══════════════════════════════════════════
-                    //  TABLE 6: stock (Purchase Ledger / Supply History)
-                    // ══════════════════════════════════════════
-                    Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS stock (
-                            Id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                            product_id      TEXT    NOT NULL,
-                            bill_id         TEXT    NOT NULL,
-                            quantity        INTEGER NOT NULL,
-                            system_date     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-                            image_path      TEXT
-                        );
-                    ");
-
-                    // ══════════════════════════════════════════
-                    //  TABLE 8: Customers (customer management)
-                    // ══════════════════════════════════════════
+                    // ────────────────────────────────────────
+                    //  TABLE 4: Customers
+                    // ────────────────────────────────────────
                     Execute(conn, @"
                         CREATE TABLE IF NOT EXISTS Customers (
-                            CustomerId      INTEGER PRIMARY KEY AUTOINCREMENT,
-                            Name            TEXT    NOT NULL,
-                            FullName        TEXT,
-                            PrimaryPhone    TEXT    NOT NULL UNIQUE,
-                            SecondaryPhone  TEXT,
-                            Address         TEXT,
-                            IsActive        INTEGER NOT NULL DEFAULT 1,
-                            CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-                        );
-
-                        CREATE INDEX IF NOT EXISTS IX_Customers_Name     ON Customers(Name);
-                        CREATE INDEX IF NOT EXISTS IX_Customers_SecondaryPhone ON Customers(SecondaryPhone);
-                    ");
-
-                    // ══════════════════════════════════════════
-                    //  TABLE 9: CustomerPhones (multiple phones)
-                    // ══════════════════════════════════════════
-                    Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS CustomerPhones (
-                            PhoneId         INTEGER PRIMARY KEY AUTOINCREMENT,
-                            CustomerId      INTEGER NOT NULL,
-                            PhoneNumber     TEXT    NOT NULL,
-                            IsPrimary       INTEGER NOT NULL DEFAULT 0,
-                            FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId) ON DELETE CASCADE
+                            CustomerId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            FullName   TEXT    NOT NULL,
+                            Phone      TEXT    UNIQUE NOT NULL,
+                            Address    TEXT,
+                            IsActive   INTEGER NOT NULL DEFAULT 1,
+                            CreatedAt  DATETIME DEFAULT CURRENT_TIMESTAMP
                         );
                     ");
 
-                    // ══════════════════════════════════════════
-                    //  TABLE 7: BILL_RETURNS (Return tracking)
-                    // ══════════════════════════════════════════
+                    // ────────────────────────────────────────
+                    //  TABLE 5: Bills (Sale Header — IMMUTABLE)
+                    //  Once saved, a bill is never modified.
+                    //  All subsequent actions (returns, payments) are
+                    //  separate transactions referencing this BillId.
+                    // ────────────────────────────────────────
                     Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS BILL_RETURNS (
-                            Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                            bill_id             INTEGER NOT NULL,
-                            product_id          TEXT NOT NULL,
-                            return_quantity     INTEGER NOT NULL,
-                            original_bill_date  TEXT NOT NULL,
-                            return_date         TEXT NOT NULL,
-                            return_bill_id      TEXT NOT NULL,
-                            FOREIGN KEY (bill_id)    REFERENCES Bill(bill_id) ON DELETE CASCADE,
-                            FOREIGN KEY (product_id) REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
+                        CREATE TABLE IF NOT EXISTS Bills (
+                            BillId         INTEGER PRIMARY KEY AUTOINCREMENT,
+                            CustomerId     INTEGER,
+                            UserId         INTEGER,
+                            TaxAmount      REAL    DEFAULT 0,
+                            DiscountAmount REAL    DEFAULT 0,
+                            Status         TEXT    DEFAULT 'Completed'
+                                           CHECK(Status IN ('Completed', 'Cancelled')),
+                            IsPrinted      INTEGER DEFAULT 0,
+                            PrintedAt      DATETIME,
+                            PrintAttempts  INTEGER DEFAULT 0,
+                            CreatedAt      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (CustomerId) REFERENCES Customers(CustomerId)
+                                ON DELETE RESTRICT,
+                            FOREIGN KEY (UserId) REFERENCES Users(Id)
+                                ON DELETE SET NULL
                         );
                     ");
 
-                    // ══════════════════════════════════════════
-                    //  TABLE 10: CreditPayments (store credit payment log)
-                    // ══════════════════════════════════════════
+                    // ────────────────────────────────────────
+                    //  TABLE 6: BillItems (Line Items — IMMUTABLE)
+                    //  Surrogate PK (BillItemId) instead of composite key
+                    //  to allow same item on multiple lines and to be
+                    //  referenced by BillReturnItems.
+                    // ────────────────────────────────────────
                     Execute(conn, @"
-                        CREATE TABLE IF NOT EXISTS CreditPayments (
+                        CREATE TABLE IF NOT EXISTS BillItems (
+                            BillItemId     INTEGER PRIMARY KEY AUTOINCREMENT,
+                            BillId         INTEGER NOT NULL,
+                            ItemId         INTEGER NOT NULL,
+                            Quantity       REAL    NOT NULL CHECK(Quantity > 0),
+                            UnitPrice      REAL    NOT NULL CHECK(UnitPrice >= 0),
+                            DiscountAmount REAL    DEFAULT 0,
+                            FOREIGN KEY (BillId) REFERENCES Bills(BillId)
+                                ON DELETE CASCADE,
+                            FOREIGN KEY (ItemId) REFERENCES Items(ItemId)
+                                ON DELETE RESTRICT
+                        );
+                    ");
+
+                    // ────────────────────────────────────────
+                    //  TABLE 7: Payments (Transaction Log)
+                    //  Supports: initial sale payment, credit installments, refunds.
+                    //  Multiple payments per bill are allowed.
+                    // ────────────────────────────────────────
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS Payments (
                             PaymentId       INTEGER PRIMARY KEY AUTOINCREMENT,
                             BillId          INTEGER NOT NULL,
-                            AmountPaid      REAL    NOT NULL,
-                            PaidAt          TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                            Amount          REAL    NOT NULL,
+                            PaymentMethod   TEXT    NOT NULL DEFAULT 'Cash'
+                                            CHECK(PaymentMethod IN ('Cash', 'Card', 'Credit')),
+                            TransactionType TEXT    NOT NULL DEFAULT 'Sale'
+                                            CHECK(TransactionType IN ('Sale', 'Credit Payment', 'Refund')),
                             Note            TEXT,
-                            FOREIGN KEY (BillId) REFERENCES Bill(bill_id) ON DELETE CASCADE
+                            PaidAt          DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (BillId) REFERENCES Bills(BillId)
+                                ON DELETE CASCADE
                         );
-                        CREATE INDEX IF NOT EXISTS IX_CreditPayments_BillId ON CreditPayments(BillId);
                     ");
 
-                    // ── Migration: Add StockQuantity and MinStockThreshold if they don't exist ──
-                    AddColumnIfNotExists(conn, "Item", "StockQuantity", "REAL NOT NULL DEFAULT 0");
-                    AddColumnIfNotExists(conn, "Item", "MinStockThreshold", "REAL NOT NULL DEFAULT 10");
+                    // ────────────────────────────────────────
+                    //  TABLE 8: BillReturns (Return Header)
+                    //  Returns are recorded AGAINST the original bill.
+                    //  NO new bill is created for a return.
+                    // ────────────────────────────────────────
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS BillReturns (
+                            ReturnId    INTEGER PRIMARY KEY AUTOINCREMENT,
+                            BillId      INTEGER NOT NULL,
+                            UserId      INTEGER,
+                            RefundAmount REAL   NOT NULL,
+                            ReturnedAt  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            FOREIGN KEY (BillId) REFERENCES Bills(BillId)
+                                ON DELETE CASCADE,
+                            FOREIGN KEY (UserId) REFERENCES Users(Id)
+                                ON DELETE SET NULL
+                        );
+                    ");
 
-                    // ── Migration: Add image_path to stock table if it doesn't exist ──
-                    AddColumnIfNotExists(conn, "stock", "image_path", "TEXT");
+                    // ────────────────────────────────────────
+                    //  TABLE 9: BillReturnItems (Return Line Items)
+                    //  Each row references the ORIGINAL BillItem being returned.
+                    //  The original BillItems row is NEVER modified.
+                    // ────────────────────────────────────────
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS BillReturnItems (
+                            ReturnItemId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ReturnId     INTEGER NOT NULL,
+                            BillItemId   INTEGER NOT NULL,
+                            Quantity     REAL    NOT NULL CHECK(Quantity > 0),
+                            UnitPrice    REAL    NOT NULL CHECK(UnitPrice >= 0),
+                            FOREIGN KEY (ReturnId) REFERENCES BillReturns(ReturnId)
+                                ON DELETE CASCADE,
+                            FOREIGN KEY (BillItemId) REFERENCES BillItems(BillItemId)
+                                ON DELETE RESTRICT
+                        );
+                    ");
 
-                    // ── Migration: Customer Management (Add column before index) ──
-                    AddColumnIfNotExists(conn, "Bill", "CustomerId", "INTEGER");
-                    AddColumnIfNotExists(conn, "Customers", "SecondaryPhone", "TEXT");
+                    // ────────────────────────────────────────
+                    //  TABLE 10: InventoryLogs (Stock Audit Trail)
+                    //  Stock quantity = SUM(QuantityChange) per ItemId.
+                    //  Positive = stock in; Negative = stock out.
+                    // ────────────────────────────────────────
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS InventoryLogs (
+                            LogId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ItemId         INTEGER NOT NULL,
+                            QuantityChange REAL    NOT NULL,
+                            ChangeType     TEXT    NOT NULL
+                                           CHECK(ChangeType IN ('Sale', 'Return', 'Purchase', 'Adjustment')),
+                            ReferenceId    INTEGER,
+                            ReferenceType  TEXT    CHECK(ReferenceType IN ('Bill', 'Return', 'Supply') OR ReferenceType IS NULL),
+                            LogDate        DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            ImagePath      TEXT,
+                            FOREIGN KEY (ItemId) REFERENCES Items(ItemId)
+                                ON DELETE CASCADE
+                        );
+                    ");
 
-                    // ── Migration: Store Credit System ──
-                    AddColumnIfNotExists(conn, "Customers", "FullName",  "TEXT");
-                    AddColumnIfNotExists(conn, "Customers", "Address2",  "TEXT");
-                    AddColumnIfNotExists(conn, "Customers", "Address3",  "TEXT");
-                    AddColumnIfNotExists(conn, "Customers", "IsActive",  "INTEGER NOT NULL DEFAULT 1");
-
-                    // Index on IsActive — must be AFTER the column is added
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Customers_IsActive ON Customers(IsActive);");
-
-                    AddColumnIfNotExists(conn, "Bill",      "PaidAmount",      "REAL NOT NULL DEFAULT 0");
-                    AddColumnIfNotExists(conn, "Bill",      "RemainingAmount",  "REAL NOT NULL DEFAULT 0");
-                    AddColumnIfNotExists(conn, "Bill",      "PaymentStatus",    "TEXT NOT NULL DEFAULT 'Paid'");
-
-                    // Backfill FullName from Name for existing customers
-                    Execute(conn, "UPDATE Customers SET FullName = Name WHERE FullName IS NULL OR FullName = '';");
-
-                    // Backfill credit columns on existing bills — they were all fully paid
-                    Execute(conn, "UPDATE Bill SET PaidAmount = GrandTotal, RemainingAmount = 0, PaymentStatus = 'Paid' WHERE PaymentStatus IS NULL OR PaymentStatus = '';");
-
-                    // ══════════════════════════════════════════
-                    //  INDEXES for query optimization
-                    // ══════════════════════════════════════════
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Item_ItemCategory       ON Item(ItemCategory);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_BillDateTime        ON Bill(BillDateTime);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_UserId              ON Bill(UserId);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_BillId          ON BillDescription(Bill_id);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_ItemId          ON BillDescription(ItemId);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_ProductId         ON stock(product_id);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_BillId            ON stock(bill_id);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_Date              ON stock(system_date);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_BillId      ON BILL_RETURNS(bill_id);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_ProductId   ON BILL_RETURNS(product_id);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Customers_Phone         ON Customers(PrimaryPhone);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_CustPhones_Phone        ON CustomerPhones(PhoneNumber);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_CustomerId         ON Bill(CustomerId);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_PaymentStatus      ON Bill(PaymentStatus);");
-                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bill_RemainingAmount    ON Bill(RemainingAmount);");
-
-                    // ── Migration: Add Status and ReferenceBillId to Bill table ──
-                    AddColumnIfNotExists(conn, "Bill", "Status", "TEXT DEFAULT 'Completed'");
-                    AddColumnIfNotExists(conn, "Bill", "ReferenceBillId", "INTEGER");
-
-                    // ── Migration: Professional Return System (Type and ParentBillId) ──
-                    AddColumnIfNotExists(conn, "Bill", "Type", "TEXT DEFAULT 'Sale'");
-                    AddColumnIfNotExists(conn, "Bill", "ParentBillId", "INTEGER");
-
-                    // ── Migration: Robust Printing System (Print tracking) ──
-                    AddColumnIfNotExists(conn, "Bill", "IsPrinted", "INTEGER DEFAULT 0");
-                    AddColumnIfNotExists(conn, "Bill", "PrintedAt", "TEXT");
-                    AddColumnIfNotExists(conn, "Bill", "PrintAttempts", "INTEGER DEFAULT 0");
-                    AddColumnIfNotExists(conn, "Bill", "BillingAddress", "TEXT");
-
-                    // Sync old status to type if newly added
-                    Execute(conn, "UPDATE Bill SET Type = 'Return' WHERE Status = '*** RETURN BILL ***' AND Type = 'Sale';");
-                    Execute(conn, "UPDATE Bill SET ParentBillId = ReferenceBillId WHERE ReferenceBillId IS NOT NULL AND ParentBillId IS NULL;");
-
-                    // ── Migration: Remove stale foreign keys from stock table ──
-                    MigrateStockTableIfNeeded(conn);
-
-                    // ── Migration: Add ON UPDATE CASCADE to BillDescription and BILL_RETURNS ──
-                    MigrateCascadeForeignKeysIfNeeded(conn);
+                    // ────────────────────────────────────────
+                    //  INDEXES — Optimized for POS query patterns
+                    // ────────────────────────────────────────
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Items_Barcode      ON Items(Barcode) WHERE Barcode IS NOT NULL;");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Items_Category     ON Items(CategoryId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bills_Customer     ON Bills(CustomerId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bills_CreatedAt    ON Bills(CreatedAt);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Bills_Status       ON Bills(Status);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillItems_BillId   ON BillItems(BillId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillItems_ItemId   ON BillItems(ItemId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Payments_BillId    ON Payments(BillId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Payments_PaidAt    ON Payments(PaidAt);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Returns_BillId     ON BillReturns(BillId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_ReturnItems_RetId  ON BillReturnItems(ReturnId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_ReturnItems_BiId   ON BillReturnItems(BillItemId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Inventory_ItemId   ON InventoryLogs(ItemId);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Inventory_LogDate  ON InventoryLogs(LogDate);");
+                    Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Customers_Phone    ON Customers(Phone);");
 
                     SeedUsers(conn);
-                    
-                    // Migrate Produce and Meat & Seafood to Other
-                    using (var cmd = conn.CreateCommand())
-                    {
-                        cmd.CommandText = "UPDATE Item SET ItemCategory = 'Other' WHERE ItemCategory IN ('Produce', 'Meat & Seafood');";
-                        int migrated = cmd.ExecuteNonQuery();
-                        if (migrated > 0)
-                            AppLogger.Info($"DatabaseInitializer: Migrated {migrated} items from removed categories to 'Other'.");
-                    }
-
                     SeedItems(conn);
                 }
 
@@ -270,7 +275,7 @@ namespace GroceryPOS.Data
         {
             // Only seed if no users exist
             using var countCmd = conn.CreateCommand();
-            countCmd.CommandText = "SELECT COUNT(*) FROM User;";
+            countCmd.CommandText = "SELECT COUNT(*) FROM Users;";
             var count = Convert.ToInt64(countCmd.ExecuteScalar());
             if (count > 0) return;
 
@@ -284,14 +289,13 @@ namespace GroceryPOS.Data
             {
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-                    INSERT INTO User (Username, PasswordHash, FullName, Role, IsActive, CreatedAt)
-                    VALUES (@username, @hash, @fullName, @role, 1, @created);
+                    INSERT INTO Users (Username, PasswordHash, FullName, Role, IsActive)
+                    VALUES (@username, @hash, @fullName, @role, 1);
                 ";
                 cmd.Parameters.AddWithValue("@username", username);
                 cmd.Parameters.AddWithValue("@hash", BCrypt.Net.BCrypt.HashPassword(password));
                 cmd.Parameters.AddWithValue("@fullName", fullName);
                 cmd.Parameters.AddWithValue("@role", role);
-                cmd.Parameters.AddWithValue("@created", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                 cmd.ExecuteNonQuery();
             }
 
@@ -303,10 +307,28 @@ namespace GroceryPOS.Data
         // ────────────────────────────────────────────
         private static void SeedItems(SqliteConnection conn)
         {
-            // Only seed if no items exist. This prevents deleted default items from re-appearing on restart.
+            // 1. Seed Categories first
             using (var countCmd = conn.CreateCommand())
             {
-                countCmd.CommandText = "SELECT COUNT(*) FROM Item;";
+                countCmd.CommandText = "SELECT COUNT(*) FROM Categories;";
+                if (Convert.ToInt64(countCmd.ExecuteScalar()) == 0)
+                {
+                    var categories = new[] { "Dairy", "Beverages", "Snacks", "Grocery", "Bakery", "Cleaning", "Personal Care", "Frozen Food", "Pantry & Spices", "Household", "Baby Care", "Stationery", "Other" };
+                    foreach (var cat in categories)
+                    {
+                        using var cmd = conn.CreateCommand();
+                        cmd.CommandText = "INSERT INTO Categories (Name) VALUES (@name);";
+                        cmd.Parameters.AddWithValue("@name", cat);
+                        cmd.ExecuteNonQuery();
+                    }
+                    AppLogger.Info("Categories seeded.");
+                }
+            }
+
+            // 2. Only seed if no items exist.
+            using (var countCmd = conn.CreateCommand())
+            {
+                countCmd.CommandText = "SELECT COUNT(*) FROM Items;";
                 var count = Convert.ToInt64(countCmd.ExecuteScalar());
                 if (count > 0) return;
             }
@@ -355,8 +377,6 @@ namespace GroceryPOS.Data
                 ("8961000700011", "K&Ns Nuggets 1kg",      1200.0, 1450.0, "Frozen Food"),
                 ("8961000700012", "Menu Shami Kabab 12pk", 550.0, 680.0, "Frozen Food"),
 
-                // --- NEW CATEGORIES ---
-                
                 // Other
                 ("1000000000001", "Red Apples 1kg",        220.0, 280.0, "Other"),
                 ("1000000000002", "Bananas Dozen",           140.0, 180.0, "Other"),
@@ -383,203 +403,549 @@ namespace GroceryPOS.Data
             };
 
             int addedCount = 0;
-            foreach (var (barcode, desc, cost, sale, category) in items)
+            foreach (var (barcode, desc, cost, sale, categoryName) in items)
             {
                 using var cmd = conn.CreateCommand();
-                // Using INSERT OR IGNORE to safely add only new records
                 cmd.CommandText = @"
-                    INSERT OR IGNORE INTO Item (itemId, Description, CostPrice, SalePrice, ItemCategory, StockQuantity)
-                    VALUES (@id, @desc, @cost, @sale, @cat, 100);
+                    INSERT INTO Items (Barcode, Description, CostPrice, SalePrice, CategoryId)
+                    SELECT @barcode, @desc, @cost, @sale, c.CategoryId
+                    FROM Categories c WHERE c.Name = @catName;
                 ";
-                cmd.Parameters.AddWithValue("@id", barcode);
+                cmd.Parameters.AddWithValue("@barcode", barcode);
                 cmd.Parameters.AddWithValue("@desc", desc);
                 cmd.Parameters.AddWithValue("@cost", cost);
                 cmd.Parameters.AddWithValue("@sale", sale);
-                cmd.Parameters.AddWithValue("@cat", category);
+                cmd.Parameters.AddWithValue("@catName", categoryName);
+                
                 int affected = cmd.ExecuteNonQuery();
-                if (affected > 0) addedCount++;
-            }
-
-            if (addedCount > 0)
-                AppLogger.Info($"SeedItems: Successfully added {addedCount} new default items/categories.");
-        }
-
-        // ────────────────────────────────────────────
-        //  Migration Helper
-        // ────────────────────────────────────────────
-        private static void AddColumnIfNotExists(SqliteConnection conn, string tableName, string columnName, string columnDefinition)
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"PRAGMA table_info({tableName})";
-            bool exists = false;
-            using (var reader = cmd.ExecuteReader())
-            {
-                while (reader.Read())
+                if (affected > 0)
                 {
-                    if (reader.GetString(reader.GetOrdinal("name")).Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                    addedCount++;
+                    // Also seed initial inventory log
+                    long lastId = 0;
+                    using (var idCmd = conn.CreateCommand())
                     {
-                        exists = true;
-                        break;
+                        idCmd.CommandText = "SELECT last_insert_rowid();";
+                        lastId = (long)idCmd.ExecuteScalar()!;
+                    }
+                    
+                    using (var logCmd = conn.CreateCommand())
+                    {
+                        logCmd.CommandText = "INSERT INTO InventoryLogs (ItemId, QuantityChange, ChangeType) VALUES (@itemId, 100, 'Purchase');";
+                        logCmd.Parameters.AddWithValue("@itemId", lastId);
+                        logCmd.ExecuteNonQuery();
                     }
                 }
             }
 
-            if (!exists)
+            if (addedCount > 0)
+                AppLogger.Info($"SeedItems: Successfully added {addedCount} new default items and inventory logs.");
+        }
+
+        // ════════════════════════════════════════════
+        //  MIGRATION FRAMEWORK
+        // ════════════════════════════════════════════
+
+        private static int GetSchemaVersion(SqliteConnection conn)
+        {
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "PRAGMA user_version;";
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch { return 0; }
+        }
+
+        private static void SetSchemaVersion(SqliteConnection conn, int version)
+        {
+            Execute(conn, $"PRAGMA user_version = {version};");
+        }
+
+        /// <summary>
+        /// Runs all pending migrations in order.
+        /// Each migration is idempotent and safe to re-run.
+        /// </summary>
+        private static void MigrateIfNeeded(SqliteConnection conn)
+        {
+            int currentVersion = GetSchemaVersion(conn);
+            if (currentVersion >= CurrentSchemaVersion) return;
+
+            AppLogger.Info($"Database migration needed: v{currentVersion} → v{CurrentSchemaVersion}");
+
+            // Migration v0 → v1: Migrate from legacy schema (old table names)
+            if (currentVersion < 1)
+            {
+                MigrateFromLegacySchema(conn);
+                SetSchemaVersion(conn, 1);
+            }
+
+            // Migration v1 → v2: Reconcile schema mismatches
+            if (currentVersion < 2)
+            {
+                MigrateSchemaV2(conn);
+                SetSchemaVersion(conn, 2);
+            }
+
+            // Migration v2 → v3: Add Address2, Address3 columns to Customers
+            if (currentVersion < 3)
+            {
+                AddColumnIfNotExists(conn, "Customers", "Address2", "TEXT");
+                AddColumnIfNotExists(conn, "Customers", "Address3", "TEXT");
+                SetSchemaVersion(conn, 3);
+                AppLogger.Info("Migration v3: Added Address2, Address3 to Customers.");
+            }
+
+            // Migration v3 → v4: Add ImagePath column to InventoryLogs
+            if (currentVersion < 4)
+            {
+                AddColumnIfNotExists(conn, "InventoryLogs", "ImagePath", "TEXT");
+                SetSchemaVersion(conn, 4);
+                AppLogger.Info("Migration v4: Added ImagePath to InventoryLogs.");
+            }
+
+            AppLogger.Info($"Database migrated successfully to v{CurrentSchemaVersion}.");
+        }
+
+        /// <summary>
+        /// Migration v0 → v1: Handles transition from legacy table names
+        /// (Bill, BillDescription, BILL_RETURNS, Item, stock) to the new normalized schema.
+        /// </summary>
+        private static void MigrateFromLegacySchema(SqliteConnection conn)
+        {
+            // Check if legacy tables exist
+            bool hasLegacyBill = TableExists(conn, "Bill");
+            bool hasLegacyItem = TableExists(conn, "Item");
+            bool hasLegacyBillDesc = TableExists(conn, "BillDescription");
+            bool hasLegacyReturns = TableExists(conn, "BILL_RETURNS");
+            bool hasLegacyStock = TableExists(conn, "stock");
+
+            if (!hasLegacyBill && !hasLegacyItem) return; // Not a legacy database
+
+            AppLogger.Info("Migrating from legacy schema (Bill/Item/BillDescription/BILL_RETURNS)...");
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+
+            using var txn = conn.BeginTransaction();
+            try
+            {
+                // Migrate Item → Items (if new-style Items doesn't exist yet)
+                if (hasLegacyItem && !TableExists(conn, "Items"))
+                {
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS Items (
+                            ItemId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Barcode TEXT UNIQUE,
+                            Description TEXT NOT NULL,
+                            CostPrice REAL NOT NULL DEFAULT 0,
+                            SalePrice REAL NOT NULL DEFAULT 0,
+                            CategoryId INTEGER,
+                            MinStockThreshold REAL NOT NULL DEFAULT 10,
+                            CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+                        );
+                    ");
+                    Execute(conn, @"
+                        INSERT OR IGNORE INTO Items (Barcode, Description, SalePrice, CostPrice)
+                        SELECT itemId, itemDescription, COALESCE(salePrice, 0), COALESCE(costPrice, 0) FROM Item;
+                    ");
+                }
+
+                // Migrate Bill → Bills
+                if (hasLegacyBill && !TableExists(conn, "Bills"))
+                {
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS Bills (
+                            BillId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            CustomerId INTEGER,
+                            UserId INTEGER,
+                            TaxAmount REAL DEFAULT 0,
+                            DiscountAmount REAL DEFAULT 0,
+                            Status TEXT DEFAULT 'Completed',
+                            IsPrinted INTEGER DEFAULT 0,
+                            PrintedAt DATETIME,
+                            PrintAttempts INTEGER DEFAULT 0,
+                            CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+                        );
+                    ");
+                    Execute(conn, @"
+                        INSERT OR IGNORE INTO Bills (BillId, TaxAmount, DiscountAmount, CreatedAt)
+                        SELECT bill_id, 0, 0, bill_date FROM Bill;
+                    ");
+                }
+
+                // Migrate BillDescription → BillItems
+                if (hasLegacyBillDesc && !TableExists(conn, "BillItems"))
+                {
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS BillItems (
+                            BillItemId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            BillId INTEGER NOT NULL,
+                            ItemId INTEGER NOT NULL,
+                            Quantity REAL NOT NULL DEFAULT 1,
+                            UnitPrice REAL NOT NULL DEFAULT 0,
+                            DiscountAmount REAL DEFAULT 0
+                        );
+                    ");
+                    Execute(conn, @"
+                        INSERT OR IGNORE INTO BillItems (BillId, ItemId, Quantity, UnitPrice)
+                        SELECT bd.Bill_id, COALESCE(i.ItemId, 0), bd.Quantity, bd.UnitPrice
+                        FROM BillDescription bd
+                        LEFT JOIN Items i ON bd.ItemId = i.Barcode;
+                    ");
+                }
+
+                // Migrate BILL_RETURNS → BillReturns + BillReturnItems
+                if (hasLegacyReturns && !TableExists(conn, "BillReturns"))
+                {
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS BillReturns (
+                            ReturnId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            BillId INTEGER NOT NULL,
+                            UserId INTEGER,
+                            RefundAmount REAL NOT NULL DEFAULT 0,
+                            ReturnedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+                        );
+                    ");
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS BillReturnItems (
+                            ReturnItemId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ReturnId INTEGER NOT NULL,
+                            BillItemId INTEGER NOT NULL DEFAULT 0,
+                            Quantity REAL NOT NULL DEFAULT 1,
+                            UnitPrice REAL NOT NULL DEFAULT 0
+                        );
+                    ");
+                    // Migrate legacy returns into headers
+                    Execute(conn, @"
+                        INSERT OR IGNORE INTO BillReturns (BillId, RefundAmount, ReturnedAt)
+                        SELECT bill_id, 0, return_date FROM BILL_RETURNS GROUP BY bill_id, return_bill_id;
+                    ");
+                }
+
+                // Migrate stock → InventoryLogs (purchase entries)
+                if (hasLegacyStock && !TableExists(conn, "InventoryLogs"))
+                {
+                    Execute(conn, @"
+                        CREATE TABLE IF NOT EXISTS InventoryLogs (
+                            LogId INTEGER PRIMARY KEY AUTOINCREMENT,
+                            ItemId INTEGER NOT NULL,
+                            QuantityChange REAL NOT NULL,
+                            ChangeType TEXT NOT NULL DEFAULT 'Purchase',
+                            ReferenceId INTEGER,
+                            ReferenceType TEXT,
+                            LogDate DATETIME DEFAULT CURRENT_TIMESTAMP
+                        );
+                    ");
+                    Execute(conn, @"
+                        INSERT OR IGNORE INTO InventoryLogs (ItemId, QuantityChange, ChangeType, LogDate)
+                        SELECT COALESCE(i.ItemId, 0), s.quantity, 'Purchase', s.system_date
+                        FROM stock s
+                        LEFT JOIN Items i ON s.product_id = i.Barcode
+                        WHERE i.ItemId IS NOT NULL;
+                    ");
+                }
+
+                txn.Commit();
+                AppLogger.Info("Legacy schema migration completed.");
+            }
+            catch (Exception ex)
+            {
+                txn.Rollback();
+                AppLogger.Error("Legacy schema migration failed", ex);
+            }
+            finally
+            {
+                Execute(conn, "PRAGMA foreign_keys = ON;");
+            }
+        }
+
+        /// <summary>
+        /// Migration v1 → v2: Reconcile schema mismatches between code and DB.
+        /// Handles: BillItems PK, Payments columns, Bills print columns, BillReturnItems table.
+        /// </summary>
+        private static void MigrateSchemaV2(SqliteConnection conn)
+        {
+            AppLogger.Info("Running schema v2 migration (reconcile mismatches)...");
+
+            // Add missing columns to Bills (safe — ALTER TABLE ADD COLUMN is idempotent-safe with IF NOT EXISTS check)
+            AddColumnIfNotExists(conn, "Bills", "IsPrinted", "INTEGER DEFAULT 0");
+            AddColumnIfNotExists(conn, "Bills", "PrintedAt", "DATETIME");
+            AddColumnIfNotExists(conn, "Bills", "PrintAttempts", "INTEGER DEFAULT 0");
+
+            // Add ReferenceId/ReferenceType/ImagePath to InventoryLogs if missing
+            AddColumnIfNotExists(conn, "InventoryLogs", "ReferenceId", "INTEGER");
+            AddColumnIfNotExists(conn, "InventoryLogs", "ReferenceType", "TEXT");
+            AddColumnIfNotExists(conn, "InventoryLogs", "ImagePath", "TEXT");
+
+            // Add UserId to BillReturns if missing
+            AddColumnIfNotExists(conn, "BillReturns", "UserId", "INTEGER");
+
+            // Migrate BillItems if it uses composite PK (no BillItemId column)
+            if (TableExists(conn, "BillItems") && !ColumnExists(conn, "BillItems", "BillItemId"))
+            {
+                MigrateBillItemsToSurrogatePK(conn);
+            }
+
+            // Migrate BillItems if it has ItemDiscount instead of DiscountAmount
+            if (TableExists(conn, "BillItems") && ColumnExists(conn, "BillItems", "ItemDiscount") && !ColumnExists(conn, "BillItems", "DiscountAmount"))
+            {
+                MigrateBillItemsDiscountColumn(conn);
+            }
+
+            // Migrate Payments if it has Method instead of PaymentMethod
+            if (TableExists(conn, "Payments") && ColumnExists(conn, "Payments", "Method") && !ColumnExists(conn, "Payments", "PaymentMethod"))
+            {
+                MigratePaymentsColumns(conn);
+            }
+
+            // Migrate BillReturns if it has flat ItemId/Quantity instead of header-only
+            if (TableExists(conn, "BillReturns") && ColumnExists(conn, "BillReturns", "ItemId"))
+            {
+                MigrateBillReturnsToHeaderDetail(conn);
+            }
+        }
+
+        // ────────────────────────────────────────────
+        //  Sub-Migrations
+        // ────────────────────────────────────────────
+
+        /// <summary>
+        /// Migrates BillItems from composite PK (BillId, ItemId)
+        /// to surrogate PK (BillItemId AUTOINCREMENT).
+        /// </summary>
+        private static void MigrateBillItemsToSurrogatePK(SqliteConnection conn)
+        {
+            AppLogger.Info("Migrating BillItems: composite PK → surrogate BillItemId...");
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+            using var txn = conn.BeginTransaction();
+            try
+            {
+                Execute(conn, "ALTER TABLE BillItems RENAME TO BillItems_old;");
+                Execute(conn, @"
+                    CREATE TABLE BillItems (
+                        BillItemId     INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BillId         INTEGER NOT NULL,
+                        ItemId         INTEGER NOT NULL,
+                        Quantity       REAL    NOT NULL CHECK(Quantity > 0),
+                        UnitPrice      REAL    NOT NULL CHECK(UnitPrice >= 0),
+                        DiscountAmount REAL    DEFAULT 0,
+                        FOREIGN KEY (BillId) REFERENCES Bills(BillId) ON DELETE CASCADE,
+                        FOREIGN KEY (ItemId) REFERENCES Items(ItemId) ON DELETE RESTRICT
+                    );
+                ");
+                string discountCol = ColumnExists(conn, "BillItems_old", "ItemDiscount") ? "ItemDiscount" :
+                                     ColumnExists(conn, "BillItems_old", "DiscountAmount") ? "DiscountAmount" : "0";
+                Execute(conn, $@"
+                    INSERT INTO BillItems (BillId, ItemId, Quantity, UnitPrice, DiscountAmount)
+                    SELECT BillId, ItemId, Quantity, UnitPrice, COALESCE({discountCol}, 0)
+                    FROM BillItems_old;
+                ");
+                Execute(conn, "DROP TABLE BillItems_old;");
+                txn.Commit();
+                AppLogger.Info("BillItems migration completed.");
+            }
+            catch (Exception ex)
+            {
+                txn.Rollback();
+                AppLogger.Error("BillItems migration failed", ex);
+            }
+            finally
+            {
+                Execute(conn, "PRAGMA foreign_keys = ON;");
+            }
+        }
+
+        /// <summary>
+        /// Renames BillItems.ItemDiscount → DiscountAmount.
+        /// </summary>
+        private static void MigrateBillItemsDiscountColumn(SqliteConnection conn)
+        {
+            AppLogger.Info("Migrating BillItems: ItemDiscount → DiscountAmount...");
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+            using var txn = conn.BeginTransaction();
+            try
+            {
+                Execute(conn, "ALTER TABLE BillItems RENAME TO BillItems_old;");
+                Execute(conn, @"
+                    CREATE TABLE BillItems (
+                        BillItemId     INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BillId         INTEGER NOT NULL,
+                        ItemId         INTEGER NOT NULL,
+                        Quantity       REAL    NOT NULL CHECK(Quantity > 0),
+                        UnitPrice      REAL    NOT NULL CHECK(UnitPrice >= 0),
+                        DiscountAmount REAL    DEFAULT 0,
+                        FOREIGN KEY (BillId) REFERENCES Bills(BillId) ON DELETE CASCADE,
+                        FOREIGN KEY (ItemId) REFERENCES Items(ItemId) ON DELETE RESTRICT
+                    );
+                ");
+                Execute(conn, @"
+                    INSERT INTO BillItems (BillItemId, BillId, ItemId, Quantity, UnitPrice, DiscountAmount)
+                    SELECT BillItemId, BillId, ItemId, Quantity, UnitPrice, COALESCE(ItemDiscount, 0)
+                    FROM BillItems_old;
+                ");
+                Execute(conn, "DROP TABLE BillItems_old;");
+                txn.Commit();
+            }
+            catch (Exception ex)
+            {
+                txn.Rollback();
+                AppLogger.Error("BillItems discount column migration failed", ex);
+            }
+            finally
+            {
+                Execute(conn, "PRAGMA foreign_keys = ON;");
+            }
+        }
+
+        /// <summary>
+        /// Migrates Payments table: Method → PaymentMethod, adds TransactionType.
+        /// </summary>
+        private static void MigratePaymentsColumns(SqliteConnection conn)
+        {
+            AppLogger.Info("Migrating Payments: Method → PaymentMethod + TransactionType...");
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+            using var txn = conn.BeginTransaction();
+            try
+            {
+                Execute(conn, "ALTER TABLE Payments RENAME TO Payments_old;");
+                Execute(conn, @"
+                    CREATE TABLE Payments (
+                        PaymentId       INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BillId          INTEGER NOT NULL,
+                        Amount          REAL    NOT NULL,
+                        PaymentMethod   TEXT    NOT NULL DEFAULT 'Cash'
+                                        CHECK(PaymentMethod IN ('Cash', 'Card', 'Credit')),
+                        TransactionType TEXT    NOT NULL DEFAULT 'Sale'
+                                        CHECK(TransactionType IN ('Sale', 'Credit Payment', 'Refund')),
+                        Note            TEXT,
+                        PaidAt          DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (BillId) REFERENCES Bills(BillId) ON DELETE CASCADE
+                    );
+                ");
+                Execute(conn, @"
+                    INSERT INTO Payments (PaymentId, BillId, Amount, PaymentMethod, TransactionType, Note, PaidAt)
+                    SELECT PaymentId, BillId, Amount, COALESCE(Method, 'Cash'), 'Sale', Note, PaidAt
+                    FROM Payments_old;
+                ");
+                Execute(conn, "DROP TABLE Payments_old;");
+                txn.Commit();
+                AppLogger.Info("Payments migration completed.");
+            }
+            catch (Exception ex)
+            {
+                txn.Rollback();
+                AppLogger.Error("Payments migration failed", ex);
+            }
+            finally
+            {
+                Execute(conn, "PRAGMA foreign_keys = ON;");
+            }
+        }
+
+        /// <summary>
+        /// Migrates BillReturns from flat (ItemId, Quantity per row) to
+        /// header/detail (BillReturns + BillReturnItems).
+        /// </summary>
+        private static void MigrateBillReturnsToHeaderDetail(SqliteConnection conn)
+        {
+            AppLogger.Info("Migrating BillReturns: flat → header/detail pattern...");
+            Execute(conn, "PRAGMA foreign_keys = OFF;");
+            using var txn = conn.BeginTransaction();
+            try
+            {
+                // Save old data
+                Execute(conn, "ALTER TABLE BillReturns RENAME TO BillReturns_old;");
+
+                // Create new header table
+                Execute(conn, @"
+                    CREATE TABLE BillReturns (
+                        ReturnId    INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BillId      INTEGER NOT NULL,
+                        UserId      INTEGER,
+                        RefundAmount REAL   NOT NULL DEFAULT 0,
+                        ReturnedAt  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (BillId) REFERENCES Bills(BillId) ON DELETE CASCADE,
+                        FOREIGN KEY (UserId) REFERENCES Users(Id) ON DELETE SET NULL
+                    );
+                ");
+
+                // Create detail table if not exists
+                Execute(conn, @"
+                    CREATE TABLE IF NOT EXISTS BillReturnItems (
+                        ReturnItemId INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ReturnId     INTEGER NOT NULL,
+                        BillItemId   INTEGER NOT NULL,
+                        Quantity     REAL    NOT NULL CHECK(Quantity > 0),
+                        UnitPrice    REAL    NOT NULL CHECK(UnitPrice >= 0),
+                        FOREIGN KEY (ReturnId) REFERENCES BillReturns(ReturnId) ON DELETE CASCADE,
+                        FOREIGN KEY (BillItemId) REFERENCES BillItems(BillItemId) ON DELETE RESTRICT
+                    );
+                ");
+
+                // Migrate: group old rows into headers
+                Execute(conn, @"
+                    INSERT INTO BillReturns (BillId, RefundAmount, ReturnedAt)
+                    SELECT BillId, SUM(RefundAmount), MAX(ReturnedAt)
+                    FROM BillReturns_old
+                    GROUP BY BillId, ReturnedAt;
+                ");
+
+                // Migrate detail items (best effort — link to BillItems by ItemId)
+                Execute(conn, @"
+                    INSERT OR IGNORE INTO BillReturnItems (ReturnId, BillItemId, Quantity, UnitPrice)
+                    SELECT br.ReturnId, COALESCE(bi.BillItemId, 0), old.Quantity,
+                           COALESCE((SELECT UnitPrice FROM BillItems WHERE BillId = old.BillId AND ItemId = old.ItemId LIMIT 1), 0)
+                    FROM BillReturns_old old
+                    JOIN BillReturns br ON br.BillId = old.BillId
+                    LEFT JOIN BillItems bi ON bi.BillId = old.BillId AND bi.ItemId = old.ItemId;
+                ");
+
+                Execute(conn, "DROP TABLE BillReturns_old;");
+                txn.Commit();
+                AppLogger.Info("BillReturns migration completed.");
+            }
+            catch (Exception ex)
+            {
+                txn.Rollback();
+                AppLogger.Error("BillReturns migration failed", ex);
+            }
+            finally
+            {
+                Execute(conn, "PRAGMA foreign_keys = ON;");
+            }
+        }
+
+        // ────────────────────────────────────────────
+        //  Schema Introspection Helpers
+        // ────────────────────────────────────────────
+
+        private static bool TableExists(SqliteConnection conn, string tableName)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@name;";
+            cmd.Parameters.AddWithValue("@name", tableName);
+            return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+        }
+
+        private static bool ColumnExists(SqliteConnection conn, string tableName, string columnName)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"PRAGMA table_info({tableName});";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                if (reader.GetString(reader.GetOrdinal("name")).Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        private static void AddColumnIfNotExists(SqliteConnection conn, string tableName, string columnName, string columnDefinition)
+        {
+            if (!TableExists(conn, tableName)) return;
+            if (!ColumnExists(conn, tableName, columnName))
             {
                 Execute(conn, $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};");
-                AppLogger.Info($"DatabaseInitializer: Added column '{columnName}' to table '{tableName}'.");
-            }
-        }
-
-        // ────────────────────────────────────────────
-        //  Migration: Recreate stock table without FKs
-        // ────────────────────────────────────────────
-        private static void MigrateStockTableIfNeeded(SqliteConnection conn)
-        {
-            // Check if the stock table has foreign keys (old schema)
-            using var fkCmd = conn.CreateCommand();
-            fkCmd.CommandText = "PRAGMA foreign_key_list(stock)";
-            bool hasForeignKeys = false;
-            using (var reader = fkCmd.ExecuteReader())
-            {
-                if (reader.Read()) hasForeignKeys = true;
-            }
-
-            if (!hasForeignKeys) return;
-
-            AppLogger.Info("DatabaseInitializer: Migrating stock table to remove stale foreign keys...");
-
-            // Disable FK checks during migration
-            Execute(conn, "PRAGMA foreign_keys = OFF;");
-
-            using var transaction = conn.BeginTransaction();
-            try
-            {
-                // 1. Rename old table
-                Execute(conn, "ALTER TABLE stock RENAME TO stock_old;");
-
-                // 2. Create new table without FKs
-                Execute(conn, @"
-                    CREATE TABLE stock (
-                        Id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                        product_id      TEXT    NOT NULL,
-                        bill_id         TEXT    NOT NULL,
-                        quantity        INTEGER NOT NULL,
-                        system_date     TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-                        image_path      TEXT
-                    );
-                ");
-
-                // 3. Copy data
-                Execute(conn, @"
-                    INSERT INTO stock (Id, product_id, bill_id, quantity, system_date, image_path)
-                    SELECT Id, product_id, bill_id, quantity, system_date, image_path
-                    FROM stock_old;
-                ");
-
-                // 4. Drop old table
-                Execute(conn, "DROP TABLE stock_old;");
-
-                // 5. Recreate indexes
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_ProductId ON stock(product_id);");
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_BillId    ON stock(bill_id);");
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_stock_Date      ON stock(system_date);");
-
-                transaction.Commit();
-                AppLogger.Info("DatabaseInitializer: Stock table migrated successfully.");
-            }
-            catch (Exception ex)
-            {
-                transaction.Rollback();
-                AppLogger.Error("DatabaseInitializer: Stock table migration failed", ex);
-            }
-            finally
-            {
-                // Re-enable FK checks
-                Execute(conn, "PRAGMA foreign_keys = ON;");
-            }
-        }
-
-        // ────────────────────────────────────────────
-        //  Migration: Add ON UPDATE CASCADE to Item foreign keys
-        // ────────────────────────────────────────────
-        private static void MigrateCascadeForeignKeysIfNeeded(SqliteConnection conn)
-        {
-            // We check BillDescription table for the ON UPDATE CASCADE string in its sql definition
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name='BillDescription';";
-            var sql = cmd.ExecuteScalar()?.ToString();
-            
-            if (sql != null && sql.Contains("ON UPDATE CASCADE", StringComparison.OrdinalIgnoreCase))
-            {
-                return; // Already migrated
-            }
-
-            AppLogger.Info("DatabaseInitializer: Migrating BillDescription and BILL_RETURNS to add ON UPDATE CASCADE...");
-
-            Execute(conn, "PRAGMA foreign_keys = OFF;");
-
-            using var transaction = conn.BeginTransaction();
-            try
-            {
-                // -- Migrate BillDescription --
-                Execute(conn, "ALTER TABLE BillDescription RENAME TO BillDescription_old;");
-                Execute(conn, @"
-                    CREATE TABLE BillDescription (
-                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                        Bill_id     INTEGER NOT NULL,
-                        ItemId      TEXT    NOT NULL,
-                        Quantity    REAL    NOT NULL,
-                        UnitPrice   REAL    NOT NULL,
-                        TotalPrice  REAL    NOT NULL,
-                        FOREIGN KEY (Bill_id) REFERENCES Bill(bill_id) ON DELETE CASCADE,
-                        FOREIGN KEY (ItemId)  REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
-                    );
-                ");
-                Execute(conn, @"
-                    INSERT INTO BillDescription (id, Bill_id, ItemId, Quantity, UnitPrice, TotalPrice)
-                    SELECT id, Bill_id, ItemId, Quantity, UnitPrice, TotalPrice FROM BillDescription_old;
-                ");
-                Execute(conn, "DROP TABLE BillDescription_old;");
-
-                // -- Migrate BILL_RETURNS --
-                Execute(conn, "ALTER TABLE BILL_RETURNS RENAME TO BILL_RETURNS_old;");
-                Execute(conn, @"
-                    CREATE TABLE BILL_RETURNS (
-                        Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                        bill_id             INTEGER NOT NULL,
-                        product_id          TEXT NOT NULL,
-                        return_quantity     INTEGER NOT NULL,
-                        original_bill_date  TEXT NOT NULL,
-                        return_date         TEXT NOT NULL,
-                        return_bill_id      TEXT NOT NULL,
-                        FOREIGN KEY (bill_id)    REFERENCES Bill(bill_id) ON DELETE CASCADE,
-                        FOREIGN KEY (product_id) REFERENCES Item(itemId)  ON DELETE RESTRICT ON UPDATE CASCADE
-                    );
-                ");
-                Execute(conn, @"
-                    INSERT INTO BILL_RETURNS (Id, bill_id, product_id, return_quantity, original_bill_date, return_date, return_bill_id)
-                    SELECT Id, bill_id, product_id, return_quantity, original_bill_date, return_date, return_bill_id FROM BILL_RETURNS_old;
-                ");
-                Execute(conn, "DROP TABLE BILL_RETURNS_old;");
-
-                // -- Recreate Indexes --
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_BillId        ON BillDescription(Bill_id);");
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillDesc_ItemId        ON BillDescription(ItemId);");
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_BillId     ON BILL_RETURNS(bill_id);");
-                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_BillReturns_ProductId  ON BILL_RETURNS(product_id);");
-
-                transaction.Commit();
-                AppLogger.Info("DatabaseInitializer: Cascade foreign keys migrated successfully.");
-            }
-            catch (Exception ex)
-            {
-                transaction.Rollback();
-                AppLogger.Error("DatabaseInitializer: Cascade foreign keys migration failed", ex);
-            }
-            finally
-            {
-                Execute(conn, "PRAGMA foreign_keys = ON;");
+                AppLogger.Info($"Added column '{columnName}' to table '{tableName}'.");
             }
         }
 

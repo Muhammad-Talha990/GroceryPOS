@@ -304,7 +304,8 @@ namespace GroceryPOS.ViewModels
                 // In a real app, I'd inject ItemRepository here too.
                 using var conn = Data.DatabaseHelper.GetConnection();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid OR Description LIKE @name LIMIT 1;";
+                cmd.CommandText = @"SELECT i.*, COALESCE((SELECT SUM(QuantityChange) FROM InventoryLogs WHERE ItemId = i.ItemId), 0) as StockQuantity
+                    FROM Items i WHERE i.Barcode = @bid OR i.Description LIKE @name LIMIT 1;";
                 cmd.Parameters.AddWithValue("@bid", SearchBarcode);
                 cmd.Parameters.AddWithValue("@name", $"%{SearchBarcode}%");
 
@@ -313,7 +314,8 @@ namespace GroceryPOS.ViewModels
                 {
                     FoundItem = new Item
                     {
-                        ItemId = reader.GetString(reader.GetOrdinal("itemId")),
+                        Id = reader.GetInt32(reader.GetOrdinal("ItemId")),
+                        Barcode = reader.IsDBNull(reader.GetOrdinal("Barcode")) ? null : reader.GetString(reader.GetOrdinal("Barcode")),
                         Description = reader.GetString(reader.GetOrdinal("Description")),
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     };
@@ -355,7 +357,8 @@ namespace GroceryPOS.ViewModels
                 // 2. Fetch the item to show in form
                 using var conn = Data.DatabaseHelper.GetConnection();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid LIMIT 1;";
+                cmd.CommandText = @"SELECT i.*, COALESCE((SELECT SUM(QuantityChange) FROM InventoryLogs WHERE ItemId = i.ItemId), 0) as StockQuantity
+                    FROM Items i WHERE i.Barcode = @bid LIMIT 1;";
                 cmd.Parameters.AddWithValue("@bid", entry.ProductId);
 
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -363,7 +366,8 @@ namespace GroceryPOS.ViewModels
                 {
                     FoundItem = new Item
                     {
-                        ItemId = reader.GetString(reader.GetOrdinal("itemId")),
+                        Id = reader.GetInt32(reader.GetOrdinal("ItemId")),
+                        Barcode = reader.IsDBNull(reader.GetOrdinal("Barcode")) ? null : reader.GetString(reader.GetOrdinal("Barcode")),
                         Description = reader.GetString(reader.GetOrdinal("Description")),
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     };
@@ -408,11 +412,13 @@ namespace GroceryPOS.ViewModels
                 
                 if (string.IsNullOrWhiteSpace(queryText))
                 {
-                    cmd.CommandText = "SELECT * FROM Item ORDER BY Description LIMIT 50;";
+                    cmd.CommandText = @"SELECT i.*, COALESCE((SELECT SUM(QuantityChange) FROM InventoryLogs WHERE ItemId = i.ItemId), 0) as StockQuantity
+                        FROM Items i ORDER BY i.Description LIMIT 50;";
                 }
                 else
                 {
-                    cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid OR Description LIKE @name LIMIT 50;";
+                    cmd.CommandText = @"SELECT i.*, COALESCE((SELECT SUM(QuantityChange) FROM InventoryLogs WHERE ItemId = i.ItemId), 0) as StockQuantity
+                        FROM Items i WHERE i.Barcode = @bid OR i.Description LIKE @name LIMIT 50;";
                     cmd.Parameters.AddWithValue("@bid", queryText);
                     cmd.Parameters.AddWithValue("@name", $"%{queryText}%");
                 }
@@ -423,7 +429,8 @@ namespace GroceryPOS.ViewModels
                 {
                     ProductSearchResults.Add(new Item
                     {
-                        ItemId = reader.GetString(reader.GetOrdinal("itemId")),
+                        Id = reader.GetInt32(reader.GetOrdinal("ItemId")),
+                        Barcode = reader.IsDBNull(reader.GetOrdinal("Barcode")) ? null : reader.GetString(reader.GetOrdinal("Barcode")),
                         Description = reader.GetString(reader.GetOrdinal("Description")),
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     });
@@ -470,7 +477,8 @@ namespace GroceryPOS.ViewModels
             {
                 using var conn = Data.DatabaseHelper.GetConnection();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "SELECT * FROM Item WHERE itemId = @bid OR Description LIKE @name LIMIT 10;";
+                cmd.CommandText = @"SELECT i.*, COALESCE((SELECT SUM(QuantityChange) FROM InventoryLogs WHERE ItemId = i.ItemId), 0) as StockQuantity
+                    FROM Items i WHERE i.Barcode = @bid OR i.Description LIKE @name LIMIT 10;";
                 cmd.Parameters.AddWithValue("@bid", SearchBarcode);
                 cmd.Parameters.AddWithValue("@name", $"%{SearchBarcode}%");
 
@@ -480,7 +488,8 @@ namespace GroceryPOS.ViewModels
                 {
                     MainProductSearchResults.Add(new Item
                     {
-                        ItemId = reader.GetString(reader.GetOrdinal("itemId")),
+                        Id = reader.GetInt32(reader.GetOrdinal("ItemId")),
+                        Barcode = reader.IsDBNull(reader.GetOrdinal("Barcode")) ? null : reader.GetString(reader.GetOrdinal("Barcode")),
                         Description = reader.GetString(reader.GetOrdinal("Description")),
                         StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity"))
                     });
@@ -522,7 +531,7 @@ namespace GroceryPOS.ViewModels
             if (FoundItem == null) return;
             try
             {
-                var history = await _stockService.GetSupplyHistoryAsync(FoundItem.ItemId);
+                var history = await _stockService.GetSupplyHistoryAsync(FoundItem.Barcode ?? "");
                 SupplyHistory.Clear();
                 foreach (var entry in history) SupplyHistory.Add(entry);
                 StatusMessage = $"Found {history.Count} stock entries.";
@@ -576,7 +585,7 @@ namespace GroceryPOS.ViewModels
             {
                 var entry = new Stock
                 {
-                    ProductId = FoundItem.ItemId,
+                    ProductId = FoundItem.Barcode ?? "",
                     Quantity = FormQuantity
                 };
 

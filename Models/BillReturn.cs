@@ -8,29 +8,30 @@ namespace GroceryPOS.Models
     /// </summary>
     public class BillReturn
     {
-        /// <summary>Auto-increment primary key.</summary>
+        /// <summary>Database Internal ID.</summary>
         public int Id { get; set; }
 
         /// <summary>Foreign Key to the original bill.</summary>
         public int BillId { get; set; }
 
-        /// <summary>The product barcode.</summary>
-        public string ProductId { get; set; } = string.Empty;
+        /// <summary>Display ID for return (e.g., Return 1).</summary>
+        public string? ReturnBillId { get; set; }
 
-        /// <summary>Quantity being returned.</summary>
-        public int ReturnQuantity { get; set; }
-
-        /// <summary>The date when the original bill was generated.</summary>
-        public string OriginalBillDate { get; set; } = string.Empty;
+        /// <summary>Total amount refunded or adjusted in this transaction.</summary>
+        public double RefundAmount { get; set; }
 
         /// <summary>The date of the return transaction.</summary>
-        public string ReturnDate { get; set; } = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        public DateTime ReturnedAt { get; set; } = DateTime.Now;
 
-        /// <summary>Reference to the newly generated return bill ID (formatted string).</summary>
-        public string ReturnBillId { get; set; } = string.Empty;
+        /// <summary>Compatibility shim for old code.</summary>
+        public string ReturnDate { get => ReturnedAt.ToString("yyyy-MM-dd HH:mm:ss"); set => ReturnedAt = DateTime.TryParse(value, out var d) ? d : DateTime.Now; }
 
-        // ── Navigation / Display Helpers ──
-        
+        /// <summary>The product barcode (deprecated in 3NF, but kept for shim).</summary>
+        public string ProductId { get; set; } = string.Empty;
+
+        /// <summary>Quantity being returned (total for this transaction).</summary>
+        public int ReturnQuantity { get; set; }
+
         /// <summary>Item description, helpful for UI.</summary>
         public string? ProductDescription { get; set; }
     }

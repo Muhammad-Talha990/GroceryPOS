@@ -13,93 +13,28 @@ namespace GroceryPOS.Data.Repositories
     public class CreditPaymentRepository
     {
         // ────────────────────────────────────────────
-        //  RECORD a payment (atomic: log + update bill)
+        //  RECORD a payment (atomic log)
         // ────────────────────────────────────────────
 
         /// <summary>
-        /// Records a payment installment and updates the parent bill's credit columns.
+        /// Records a payment installment in the unified Payments table.
         /// </summary>
-        /// <param name="payment">Payment details (BillId, AmountPaid, Note).</param>
-        /// <returns>Updated Bill after the payment.</returns>
-        public Bill RecordPayment(CreditPayment payment)
+        public void RecordPayment(CreditPayment payment)
         {
             using var conn = DatabaseHelper.GetConnection();
-            using var txn  = conn.BeginTransaction();
-
-            try
-            {
-                // 1. Read current bill state
-                double grandTotal, currentPaid;
-                using (var readCmd = conn.CreateCommand())
-                {
-                    readCmd.Transaction  = txn;
-                    readCmd.CommandText  = "SELECT GrandTotal, PaidAmount FROM Bill WHERE bill_id = @id;";
-                    readCmd.Parameters.AddWithValue("@id", payment.BillId);
-                    using var reader = readCmd.ExecuteReader();
-                    if (!reader.Read())
-                        throw new InvalidOperationException($"Bill #{payment.BillId} not found.");
-                    grandTotal   = reader.GetDouble(0);
-                    currentPaid  = reader.GetDouble(1);
-                }
-
-                double newPaid      = Math.Round(currentPaid + payment.AmountPaid, 2);
-                double newRemaining = Math.Round(Math.Max(0, grandTotal - newPaid), 2);
-                string newStatus    = newRemaining <= 0 ? "Paid"
-                                    : newPaid > 0       ? "Partial"
-                                                        : "Unpaid";
-
-                // 2. Insert payment log
-                payment.PaidAt = DateTime.Now;
-                using (var logCmd = conn.CreateCommand())
-                {
-                    logCmd.Transaction  = txn;
-                    logCmd.CommandText  = @"
-                        INSERT INTO CreditPayments (BillId, AmountPaid, PaidAt, Note)
-                        VALUES (@bid, @amt, @at, @note);
-                        SELECT last_insert_rowid();";
-                    logCmd.Parameters.AddWithValue("@bid",  payment.BillId);
-                    logCmd.Parameters.AddWithValue("@amt",  payment.AmountPaid);
-                    logCmd.Parameters.AddWithValue("@at",   payment.PaidAt.ToString("yyyy-MM-dd HH:mm:ss"));
-                    logCmd.Parameters.AddWithValue("@note", payment.Note ?? (object)DBNull.Value);
-                    payment.PaymentId = Convert.ToInt32(logCmd.ExecuteScalar());
-                }
-
-                // 3. Update bill
-                using (var updCmd = conn.CreateCommand())
-                {
-                    updCmd.Transaction  = txn;
-                    updCmd.CommandText  = @"
-                        UPDATE Bill
-                        SET PaidAmount     = @paid,
-                            RemainingAmount = @remaining,
-                            PaymentStatus  = @status
-                        WHERE bill_id = @id;";
-                    updCmd.Parameters.AddWithValue("@paid",      newPaid);
-                    updCmd.Parameters.AddWithValue("@remaining", newRemaining);
-                    updCmd.Parameters.AddWithValue("@status",    newStatus);
-                    updCmd.Parameters.AddWithValue("@id",        payment.BillId);
-                    updCmd.ExecuteNonQuery();
-                }
-
-                txn.Commit();
-                AppLogger.Info($"CreditPayment: Bill #{payment.BillId} — Paid Rs.{payment.AmountPaid:N2}. New status: {newStatus}, Remaining: Rs.{newRemaining:N2}");
-
-                // 4. Return updated bill stub for UI refresh
-                return new Bill
-                {
-                    BillId          = payment.BillId,
-                    GrandTotal      = grandTotal,
-                    PaidAmount      = newPaid,
-                    RemainingAmount = newRemaining,
-                    PaymentStatus   = newStatus
-                };
-            }
-            catch (Exception ex)
-            {
-                txn.Rollback();
-                AppLogger.Error("CreditPaymentRepository.RecordPayment failed — rolled back", ex);
-                throw;
-            }
+            using var cmd = conn.CreateCommand();
+            
+            cmd.CommandText = @"
+                INSERT INTO Payments (BillId, Amount, PaymentMethod, TransactionType, PaidAt)
+                VALUES (@bid, @amt, 'Cash', 'Credit Payment', @at);
+                SELECT last_insert_rowid();";
+            
+            cmd.Parameters.AddWithValue("@bid", payment.BillId);
+            cmd.Parameters.AddWithValue("@amt", Math.Round(payment.AmountPaid, 2));
+            cmd.Parameters.AddWithValue("@at", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            
+            payment.PaymentId = Convert.ToInt32(cmd.ExecuteScalar());
+            AppLogger.Info($"CreditPayment recorded: BillId={payment.BillId}, Amount={payment.AmountPaid:N2}");
         }
 
         // ────────────────────────────────────────────
@@ -113,7 +48,8 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd  = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT * FROM CreditPayments
+                SELECT PaymentId, BillId, Amount, PaidAt
+                FROM Payments
                 WHERE BillId = @bid
                 ORDER BY PaidAt DESC;";
             cmd.Parameters.AddWithValue("@bid", billId);
@@ -123,11 +59,10 @@ namespace GroceryPOS.Data.Repositories
             {
                 list.Add(new CreditPayment
                 {
-                    PaymentId  = reader.GetInt32(reader.GetOrdinal("PaymentId")),
-                    BillId     = reader.GetInt32(reader.GetOrdinal("BillId")),
-                    AmountPaid = reader.GetDouble(reader.GetOrdinal("AmountPaid")),
-                    PaidAt     = DateTime.TryParse(reader.GetString(reader.GetOrdinal("PaidAt")), out var d) ? d : DateTime.Now,
-                    Note       = reader.IsDBNull(reader.GetOrdinal("Note")) ? null : reader.GetString(reader.GetOrdinal("Note"))
+                    PaymentId  = reader.GetInt32(0),
+                    BillId     = reader.GetInt32(1),
+                    AmountPaid = reader.GetDouble(2),
+                    PaidAt     = reader.GetDateTime(3)
                 });
             }
             return list;
@@ -138,7 +73,7 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd  = conn.CreateCommand();
-            cmd.CommandText = "SELECT COALESCE(SUM(AmountPaid), 0) FROM CreditPayments WHERE BillId = @bid;";
+            cmd.CommandText = "SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = @bid;";
             cmd.Parameters.AddWithValue("@bid", billId);
             return Convert.ToDouble(cmd.ExecuteScalar());
         }

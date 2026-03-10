@@ -18,23 +18,17 @@ namespace GroceryPOS.Services
             using (var conn = DatabaseHelper.GetConnection())
             using (var cmd = conn.CreateCommand())
             {
-                // Find the highest sequence number for the current year
-                cmd.CommandText = "SELECT bill_id FROM stock WHERE bill_id LIKE @prefix ORDER BY bill_id DESC LIMIT 1;";
-                cmd.Parameters.AddWithValue("@prefix", $"{prefix}%");
+                // Count supply entries this year to determine the next sequence number
+                cmd.CommandText = @"
+                    SELECT COUNT(*) FROM InventoryLogs 
+                    WHERE ReferenceType = 'Supply' 
+                      AND LogDate >= @yearStart;";
+                cmd.Parameters.AddWithValue("@yearStart", $"{year}-01-01 00:00:00");
                 
                 var result = cmd.ExecuteScalar();
                 if (result != null && result != DBNull.Value)
                 {
-                    string lastId = result.ToString()!;
-                    // Extract the last 4 digits (assuming format SUP-YYYY-XXXX)
-                    if (lastId.Length >= 4)
-                    {
-                        string suffix = lastId.Substring(lastId.LastIndexOf('-') + 1);
-                        if (int.TryParse(suffix, out int lastNumber))
-                        {
-                            nextNumber = lastNumber + 1;
-                        }
-                    }
+                    nextNumber = Convert.ToInt32(result) + 1;
                 }
             }
 

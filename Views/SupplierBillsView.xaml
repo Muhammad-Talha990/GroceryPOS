@@ -87,10 +87,10 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel>
                                                 <TextBlock Text="{Binding Description}" FontWeight="Bold" FontSize="13" Foreground="#1E293B"/>
-                                                <TextBlock Text="{Binding ItemId, StringFormat='Barcode: {0}'}" FontSize="11" Foreground="#64748B"/>
+                                                <TextBlock Text="{Binding Barcode, StringFormat='Barcode: {0}'}" FontSize="11" Foreground="#64748B"/>
                                             </StackPanel>
                                             <Border Grid.Column="1" Background="#F1F5F9" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding StockQuantity, StringFormat='Stock: {0}'}" 
+                                                <TextBlock Text="{Binding StockQuantity, StringFormat='Stock: {0}'}"
                                                            FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                                             </Border>
                                         </Grid>
@@ -140,7 +140,7 @@
                         <TextBlock Text="{Binding FoundItem.Description}" FontSize="20" FontWeight="Bold" Foreground="White"/>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="Barcode: " Foreground="White" Opacity="0.7"/>
-                            <TextBlock Text="{Binding FoundItem.ItemId}" Foreground="White" FontWeight="SemiBold" Margin="0,0,24,0"/>
+                            <TextBlock Text="{Binding FoundItem.Barcode}" Foreground="White" FontWeight="SemiBold" Margin="0,0,24,0"/>
                         </StackPanel>
                     </StackPanel>
                     
@@ -357,10 +357,10 @@
                                                                     </Grid.ColumnDefinitions>
                                                             <StackPanel>
                                                                 <TextBlock Text="{Binding Description}" FontWeight="Bold" FontSize="13" Foreground="#1E293B"/>
-                                                                <TextBlock Text="{Binding ItemId, StringFormat='Barcode: {0}'}" FontSize="11" Foreground="#64748B"/>
+                                                                <TextBlock Text="{Binding Barcode, StringFormat='Barcode: {0}'}" FontSize="11" Foreground="#64748B"/>
                                                             </StackPanel>
                                                             <Border Grid.Column="1" Background="#F1F5F9" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding StockQuantity, StringFormat='Qty: {0}'}" 
+                                                                <TextBlock Text="{Binding StockQuantity, StringFormat='Qty: {0}'}"
                                                                            FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                                                             </Border>
                                                         </Grid>
@@ -394,7 +394,7 @@
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                         <TextBlock Text="ITEM IDENTIFIED" FontSize="10" FontWeight="Black" Foreground="#15803D" Opacity="0.7" Margin="0,0,0,4"/>
                                         <TextBlock Text="{Binding FoundItem.Description}" FontSize="16" FontWeight="Bold" Foreground="#166534"/>
-                                        <TextBlock Text="{Binding FoundItem.ItemId, StringFormat='Barcode: {0}'}" FontSize="12" Foreground="#166534" Opacity="0.6"/>
+                                        <TextBlock Text="{Binding FoundItem.Barcode, StringFormat='Barcode: {0}'}" FontSize="12" Foreground="#166534" Opacity="0.6"/>
                                     </StackPanel>
                                 </Grid>
                             </Border>

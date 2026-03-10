@@ -10,6 +10,10 @@ namespace GroceryPOS.Data.Repositories
     /// Data access for the Customers table.
     /// Supports full CRUD, soft-delete, credit querying, and filtered search.
     /// </summary>
+    /// <summary>
+    /// Data access for the Customers table (Normalized 3NF).
+    /// Supports full CRUD, soft-delete, and calculated credit balance.
+    /// </summary>
     public class CustomerRepository
     {
         // ────────────────────────────────────────────
@@ -22,18 +26,15 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Customers (Name, FullName, PrimaryPhone, SecondaryPhone, Address, Address2, Address3, IsActive, CreatedAt)
-                VALUES (@name, @fullName, @phone, @phone2, @address, @address2, @address3, 1, @created);
+                INSERT INTO Customers (FullName, Phone, Address, Address2, Address3, IsActive)
+                VALUES (@fullName, @phone, @address, @address2, @address3, 1);
                 SELECT last_insert_rowid();";
 
-            cmd.Parameters.AddWithValue("@name",     customer.FullName);
             cmd.Parameters.AddWithValue("@fullName", customer.FullName);
-            cmd.Parameters.AddWithValue("@phone",    NormalizePhone(customer.PrimaryPhone));
-            cmd.Parameters.AddWithValue("@phone2",   string.IsNullOrEmpty(customer.SecondaryPhone) ? (object)DBNull.Value : NormalizePhone(customer.SecondaryPhone));
-            cmd.Parameters.AddWithValue("@address",  customer.Address ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@address2", customer.Address2 ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@address3", customer.Address3 ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@created",  customer.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@phone",    NormalizePhone(customer.Phone));
+            cmd.Parameters.AddWithValue("@address",  (object?)customer.Address ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@address2", (object?)customer.Address2 ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@address3", (object?)customer.Address3 ?? DBNull.Value);
 
             customer.CustomerId = Convert.ToInt32(cmd.ExecuteScalar());
         }
@@ -45,21 +46,18 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 UPDATE Customers
-                SET Name           = @fullName,
-                    FullName       = @fullName,
-                    PrimaryPhone   = @phone,
-                    SecondaryPhone = @phone2,
-                    Address        = @address,
-                    Address2       = @address2,
-                    Address3       = @address3
+                SET FullName  = @fullName,
+                    Phone     = @phone,
+                    Address   = @address,
+                    Address2  = @address2,
+                    Address3  = @address3
                 WHERE CustomerId = @id;";
 
             cmd.Parameters.AddWithValue("@fullName", customer.FullName);
-            cmd.Parameters.AddWithValue("@phone",    NormalizePhone(customer.PrimaryPhone));
-            cmd.Parameters.AddWithValue("@phone2",   string.IsNullOrEmpty(customer.SecondaryPhone) ? (object)DBNull.Value : NormalizePhone(customer.SecondaryPhone));
-            cmd.Parameters.AddWithValue("@address",  customer.Address ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@address2", customer.Address2 ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@address3", customer.Address3 ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@phone",    NormalizePhone(customer.Phone));
+            cmd.Parameters.AddWithValue("@address",  (object?)customer.Address ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@address2", (object?)customer.Address2 ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@address3", (object?)customer.Address3 ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@id",       customer.CustomerId);
             cmd.ExecuteNonQuery();
         }
@@ -88,27 +86,34 @@ namespace GroceryPOS.Data.Repositories
         //  READ operations
         // ────────────────────────────────────────────
 
+        private const string CustomerSelectSql = @"
+            SELECT c.*,
+                   (SELECT COUNT(*) FROM Bills WHERE CustomerId = c.CustomerId) as BillCount,
+                   (SELECT MAX(CreatedAt) FROM Bills WHERE CustomerId = c.CustomerId) as LastVisit,
+                   (
+                       SELECT COALESCE(SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount, 0)
+                       FROM Bills b
+                       JOIN BillItems bi ON b.BillId = bi.BillId
+                       WHERE b.CustomerId = c.CustomerId AND b.Status != 'Cancelled'
+                   ) as TotalAmount,
+                   (
+                       SELECT COALESCE(SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount, 0) - 
+                              COALESCE((SELECT SUM(Amount) FROM Payments WHERE BillId IN (SELECT BillId FROM Bills WHERE CustomerId = c.CustomerId)), 0)
+                       FROM Bills b
+                       JOIN BillItems bi ON b.BillId = bi.BillId
+                       WHERE b.CustomerId = c.CustomerId AND b.Status != 'Cancelled'
+                   ) as PendingCredit
+            FROM Customers c";
+
         /// <summary>
         /// Returns all customers for the management grid (includes inactive ones).
-        /// Each customer includes their pending credit balance.
         /// </summary>
         public List<Customer> GetAll(bool activeOnly = false)
         {
             var customers = new List<Customer>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT c.*,
-                       COUNT(b.bill_id)                                          AS BillCount,
-                       COALESCE(SUM(b.GrandTotal), 0)                           AS TotalAmount,
-                       MAX(b.BillDateTime)                                       AS LastVisit,
-                       COALESCE(SUM(CASE WHEN b.RemainingAmount > 0 AND b.Type = 'Sale' AND b.Status != 'Cancelled'
-                                         THEN b.RemainingAmount ELSE 0 END), 0) AS PendingCredit
-                FROM Customers c
-                LEFT JOIN Bill b ON c.CustomerId = b.CustomerId AND b.Type = 'Sale'
-                " + (activeOnly ? "WHERE c.IsActive = 1 " : "") + @"
-                GROUP BY c.CustomerId
-                ORDER BY c.FullName ASC;";
+            cmd.CommandText = CustomerSelectSql + (activeOnly ? " WHERE c.IsActive = 1" : "") + " ORDER BY c.FullName ASC;";
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -119,7 +124,6 @@ namespace GroceryPOS.Data.Repositories
 
         /// <summary>
         /// Searches active customers by name or phone (used in billing dropdown).
-        /// Returns max 10 results.
         /// </summary>
         public List<Customer> Search(string query)
         {
@@ -128,39 +132,20 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
 
-            cmd.CommandText = @"
-                SELECT c.*,
-                       COUNT(b.bill_id)                                          AS BillCount,
-                       COALESCE(SUM(b.GrandTotal), 0)                           AS TotalAmount,
-                       MAX(b.BillDateTime)                                       AS LastVisit,
-                       COALESCE(SUM(CASE WHEN b.RemainingAmount > 0 AND b.Type = 'Sale' AND b.Status != 'Cancelled'
-                                         THEN b.RemainingAmount ELSE 0 END), 0) AS PendingCredit
-                FROM Customers c
-                LEFT JOIN Bill b ON c.CustomerId = b.CustomerId AND b.Type = 'Sale'
-                WHERE c.IsActive = 1";
+            cmd.CommandText = CustomerSelectSql + " WHERE c.IsActive = 1";
 
             if (!string.IsNullOrEmpty(normalized))
             {
-                cmd.CommandText += @"
-                  AND (COALESCE(c.FullName, c.Name) LIKE @nameQuery
-                       OR c.PrimaryPhone  LIKE @phoneQuery
-                       OR c.PrimaryPhone  = @exactPhone
-                       OR c.SecondaryPhone LIKE @phoneQuery
-                       OR c.SecondaryPhone = @exactPhone)";
+                cmd.CommandText += " AND (c.FullName LIKE @nameQuery OR c.Phone LIKE @phoneQuery OR c.Phone = @exactPhone)";
                 cmd.Parameters.AddWithValue("@phoneQuery", "%" + normalized);
                 cmd.Parameters.AddWithValue("@exactPhone", normalized);
             }
             else
             {
-                cmd.CommandText += @"
-                  AND (COALESCE(c.FullName, c.Name) LIKE @nameQuery)";
+                cmd.CommandText += " AND c.FullName LIKE @nameQuery";
             }
 
-            cmd.CommandText += @"
-                GROUP BY c.CustomerId
-                ORDER BY BillCount DESC, COALESCE(c.FullName, c.Name) ASC
-                LIMIT 10;";
-
+            cmd.CommandText += " ORDER BY c.FullName ASC LIMIT 10;";
             cmd.Parameters.AddWithValue("@nameQuery", "%" + query + "%");
 
             using var reader = cmd.ExecuteReader();
@@ -175,10 +160,7 @@ namespace GroceryPOS.Data.Repositories
             string normalized = NormalizePhone(phone);
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT *, 0 AS BillCount, 0.0 AS TotalAmount, NULL AS LastVisit, 0.0 AS PendingCredit
-                FROM Customers
-                WHERE PrimaryPhone = @phone OR SecondaryPhone = @phone";
+            cmd.CommandText = CustomerSelectSql + " WHERE c.Phone = @phone";
             cmd.Parameters.AddWithValue("@phone", normalized);
 
             using var reader = cmd.ExecuteReader();
@@ -190,17 +172,7 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT c.*,
-                       COUNT(b.bill_id)                                          AS BillCount,
-                       COALESCE(SUM(b.GrandTotal), 0)                           AS TotalAmount,
-                       MAX(b.BillDateTime)                                       AS LastVisit,
-                       COALESCE(SUM(CASE WHEN b.RemainingAmount > 0 AND b.Type = 'Sale' AND b.Status != 'Cancelled'
-                                         THEN b.RemainingAmount ELSE 0 END), 0) AS PendingCredit
-                FROM Customers c
-                LEFT JOIN Bill b ON c.CustomerId = b.CustomerId AND b.Type = 'Sale'
-                WHERE c.CustomerId = @id
-                GROUP BY c.CustomerId;";
+            cmd.CommandText = CustomerSelectSql + " WHERE c.CustomerId = @id;";
             cmd.Parameters.AddWithValue("@id", id);
 
             using var reader = cmd.ExecuteReader();
@@ -214,12 +186,14 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COALESCE(SUM(RemainingAmount), 0)
-                FROM Bill
-                WHERE CustomerId = @cid
-                  AND RemainingAmount > 0
-                  AND Type = 'Sale'
-                  AND Status != 'Cancelled';";
+                SELECT 
+                    (SELECT COALESCE(SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount, 0)
+                     FROM Bills b JOIN BillItems bi ON b.BillId = bi.BillId
+                     WHERE b.CustomerId = @cid AND b.Status != 'Cancelled')
+                    -
+                    (SELECT COALESCE(SUM(p.Amount), 0)
+                     FROM Payments p JOIN Bills b ON p.BillId = b.BillId
+                     WHERE b.CustomerId = @cid AND b.Status != 'Cancelled')";
             cmd.Parameters.AddWithValue("@cid", customerId);
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
@@ -239,31 +213,22 @@ namespace GroceryPOS.Data.Repositories
 
         private Customer MapCustomer(SqliteDataReader reader)
         {
-            // FullName takes precedence; fall back to Name for old rows
-            string fullName = reader.HasColumn("FullName") && !reader.IsDBNull(reader.GetOrdinal("FullName"))
-                ? reader.GetString(reader.GetOrdinal("FullName"))
-                : reader.GetString(reader.GetOrdinal("Name"));
-
-            return new Customer
+            var customer = new Customer
             {
                 CustomerId    = reader.GetInt32(reader.GetOrdinal("CustomerId")),
-                FullName      = string.IsNullOrEmpty(fullName)
-                                    ? reader.GetString(reader.GetOrdinal("Name"))
-                                    : fullName,
-                PrimaryPhone  = reader.GetString(reader.GetOrdinal("PrimaryPhone")),
-                SecondaryPhone= reader.IsDBNull(reader.GetOrdinal("SecondaryPhone")) ? null : reader.GetString(reader.GetOrdinal("SecondaryPhone")),
+                FullName      = reader.GetString(reader.GetOrdinal("FullName")),
+                Phone         = reader.GetString(reader.GetOrdinal("Phone")),
                 Address       = reader.IsDBNull(reader.GetOrdinal("Address")) ? null : reader.GetString(reader.GetOrdinal("Address")),
-                Address2      = reader.IsDBNull(reader.GetOrdinal("Address2")) ? null : reader.GetString(reader.GetOrdinal("Address2")),
-                Address3      = reader.IsDBNull(reader.GetOrdinal("Address3")) ? null : reader.GetString(reader.GetOrdinal("Address3")),
-                IsActive      = reader.HasColumn("IsActive") ? reader.GetInt32(reader.GetOrdinal("IsActive")) != 0 : true,
-                CreatedAt     = DateTime.TryParse(reader.GetString(reader.GetOrdinal("CreatedAt")), out var dt) ? dt : DateTime.Now,
-                BillCount     = reader.HasColumn("BillCount")      ? reader.GetInt32(reader.GetOrdinal("BillCount"))    : 0,
-                TotalAmount   = reader.HasColumn("TotalAmount")    ? reader.GetDouble(reader.GetOrdinal("TotalAmount")) : 0,
-                PendingCredit = reader.HasColumn("PendingCredit")  ? reader.GetDouble(reader.GetOrdinal("PendingCredit")) : 0,
-                LastVisitDate = reader.HasColumn("LastVisit") && !reader.IsDBNull(reader.GetOrdinal("LastVisit"))
-                                    ? (DateTime.TryParse(reader.GetString(reader.GetOrdinal("LastVisit")), out var lvd) ? lvd : null)
-                                    : null
+                IsActive      = reader.GetInt32(reader.GetOrdinal("IsActive")) != 0,
+                CreatedAt     = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
+                BillCount     = reader.GetInt32(reader.GetOrdinal("BillCount")),
+                TotalAmount   = reader.GetDouble(reader.GetOrdinal("TotalAmount")),
+                PendingCredit = reader.GetDouble(reader.GetOrdinal("PendingCredit")),
+                LastVisitDate = reader.IsDBNull(reader.GetOrdinal("LastVisit")) ? null : reader.GetDateTime(reader.GetOrdinal("LastVisit"))
             };
+            if (reader.HasColumn("Address2")) customer.Address2 = reader.IsDBNull(reader.GetOrdinal("Address2")) ? null : reader.GetString(reader.GetOrdinal("Address2"));
+            if (reader.HasColumn("Address3")) customer.Address3 = reader.IsDBNull(reader.GetOrdinal("Address3")) ? null : reader.GetString(reader.GetOrdinal("Address3"));
+            return customer;
         }
     }
 

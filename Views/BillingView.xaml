@@ -489,7 +489,7 @@
                         </DataGrid.InputBindings>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Product" Binding="{Binding ItemDescription}" Width="*" MinWidth="150" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="Barcode" Binding="{Binding ItemId}" Width="120" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="120" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice, StringFormat='Rs.{0:N0}'}" Width="90" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="75" IsReadOnly="False">
                                 <DataGridTextColumn.ElementStyle>
@@ -582,6 +582,11 @@
                             </TextBlock>
                         </Grid>
                     </Border>
+
+                    <!-- Payment Method -->
+                    <TextBlock Text="Payment Method" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"/>
+                    <ComboBox ItemsSource="{Binding PaymentMethods}" SelectedItem="{Binding SelectedPaymentMethod}"
+                              FontSize="14" Padding="10,8" Margin="0,0,0,12"/>
 
                     <!-- Cash Received -->
                     <TextBlock Text="Cash Received (Rs.)" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,8"/>

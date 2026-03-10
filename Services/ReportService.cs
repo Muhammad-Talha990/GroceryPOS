@@ -73,11 +73,11 @@ namespace GroceryPOS.Services
                     bd.ItemId,
                     COALESCE(i.Description, 'Unknown') AS ItemDesc,
                     SUM(bd.Quantity)   AS TotalQty,
-                    SUM(bd.TotalPrice) AS TotalRevenue
-                FROM BillDescription bd
-                INNER JOIN Bill b ON bd.Bill_id = b.bill_id
-                LEFT  JOIN Item i ON bd.ItemId  = i.itemId
-                WHERE b.BillDateTime >= @from AND b.BillDateTime < @to
+                    SUM(bd.Quantity * bd.UnitPrice - bd.DiscountAmount) AS TotalRevenue
+                FROM BillItems bd
+                INNER JOIN Bills b ON bd.BillId = b.BillId
+                LEFT  JOIN Items i ON bd.ItemId = i.ItemId
+                WHERE b.CreatedAt >= @from AND b.CreatedAt < @to
                 GROUP BY bd.ItemId, ItemDesc
                 ORDER BY TotalRevenue DESC;
             ";
@@ -105,8 +105,11 @@ namespace GroceryPOS.Services
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COALESCE(SUM(GrandTotal), 0) FROM Bill
-                WHERE BillDateTime >= @from AND BillDateTime < @to;
+                SELECT COALESCE(SUM(SubTotal), 0) FROM (
+                    SELECT (SELECT SUM(Quantity * UnitPrice - DiscountAmount) FROM BillItems WHERE BillId = b.BillId) as SubTotal
+                    FROM Bills b
+                    WHERE CreatedAt >= @from AND CreatedAt < @to
+                );
             ";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -119,8 +122,8 @@ namespace GroceryPOS.Services
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COUNT(*) FROM Bill
-                WHERE BillDateTime >= @from AND BillDateTime < @to;
+                SELECT COUNT(*) FROM Bills
+                WHERE CreatedAt >= @from AND CreatedAt < @to;
             ";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));

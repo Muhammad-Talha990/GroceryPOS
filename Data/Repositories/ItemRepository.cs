@@ -7,11 +7,17 @@ using GroceryPOS.Models;
 namespace GroceryPOS.Data.Repositories
 {
     /// <summary>
-    /// Data access for the Item table.
+    /// Data access for the Items table (Normalized 3NF).
     /// Provides CRUD operations using raw SQL with parameterized queries.
     /// </summary>
     public class ItemRepository
     {
+        private const string BaseSelectSql = @"
+            SELECT i.*, c.Name as CategoryName, 
+                   COALESCE((SELECT SUM(QuantityChange) FROM InventoryLogs WHERE ItemId = i.ItemId), 0) as StockQuantity
+            FROM Items i
+            LEFT JOIN Categories c ON i.CategoryId = c.CategoryId";
+
         // ────────────────────────────────────────────
         //  READ operations
         // ────────────────────────────────────────────
@@ -22,7 +28,7 @@ namespace GroceryPOS.Data.Repositories
             var items = new List<Item>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Item ORDER BY Description;";
+            cmd.CommandText = $"{BaseSelectSql} ORDER BY i.Description;";
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -31,13 +37,25 @@ namespace GroceryPOS.Data.Repositories
             return items;
         }
 
-        /// <summary>Gets a single item by barcode (primary key).</summary>
+        /// <summary>Gets a single item by barcode.</summary>
         public Item? GetByBarcode(string barcode)
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Item WHERE itemId = @id;";
-            cmd.Parameters.AddWithValue("@id", barcode);
+            cmd.CommandText = $"{BaseSelectSql} WHERE i.Barcode = @barcode;";
+            cmd.Parameters.AddWithValue("@barcode", barcode);
+
+            using var reader = cmd.ExecuteReader();
+            return reader.Read() ? MapItem(reader) : null;
+        }
+
+        /// <summary>Gets a single item by its internal primary key ID.</summary>
+        public Item? GetById(int id)
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"{BaseSelectSql} WHERE i.ItemId = @id;";
+            cmd.Parameters.AddWithValue("@id", id);
 
             using var reader = cmd.ExecuteReader();
             return reader.Read() ? MapItem(reader) : null;
@@ -49,12 +67,12 @@ namespace GroceryPOS.Data.Repositories
             var items = new List<Item>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT * FROM Item 
-                WHERE Description  LIKE @term 
-                   OR itemId       LIKE @term 
-                   OR ItemCategory LIKE @term
-                ORDER BY Description;
+            cmd.CommandText = $@"
+                {BaseSelectSql}
+                WHERE i.Description LIKE @term 
+                   OR i.Barcode     LIKE @term 
+                   OR c.Name        LIKE @term
+                ORDER BY i.Description;
             ";
             cmd.Parameters.AddWithValue("@term", $"%{searchTerm}%");
 
@@ -65,14 +83,14 @@ namespace GroceryPOS.Data.Repositories
             return items;
         }
 
-        /// <summary>Gets all items in a specific category.</summary>
-        public List<Item> GetByCategory(string category)
+        /// <summary>Gets all items in a specific category name.</summary>
+        public List<Item> GetByCategory(string categoryName)
         {
             var items = new List<Item>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM Item WHERE ItemCategory = @cat ORDER BY Description;";
-            cmd.Parameters.AddWithValue("@cat", category);
+            cmd.CommandText = $"{BaseSelectSql} WHERE c.Name = @cat ORDER BY i.Description;";
+            cmd.Parameters.AddWithValue("@cat", categoryName);
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -87,7 +105,7 @@ namespace GroceryPOS.Data.Repositories
             var categories = new List<string>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT DISTINCT ItemCategory FROM Item WHERE ItemCategory IS NOT NULL ORDER BY ItemCategory;";
+            cmd.CommandText = "SELECT Name FROM Categories ORDER BY Name;";
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -101,7 +119,7 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM Item;";
+            cmd.CommandText = "SELECT COUNT(*) FROM Items;";
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
@@ -115,47 +133,75 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Item (itemId, Description, CostPrice, SalePrice, ItemCategory, StockQuantity, MinStockThreshold)
-                VALUES (@id, @desc, @cost, @sale, @cat, @stock, @threshold);
+                INSERT INTO Items (Barcode, Description, CostPrice, SalePrice, CategoryId, MinStockThreshold)
+                VALUES (@barcode, @desc, @cost, @sale, 
+                       (SELECT CategoryId FROM Categories WHERE Name = @catName), 
+                       @threshold);
             ";
-            cmd.Parameters.AddWithValue("@id", item.ItemId);
+            cmd.Parameters.AddWithValue("@barcode", string.IsNullOrWhiteSpace(item.Barcode) ? DBNull.Value : item.Barcode);
             cmd.Parameters.AddWithValue("@desc", item.Description);
             cmd.Parameters.AddWithValue("@cost", item.CostPrice);
             cmd.Parameters.AddWithValue("@sale", item.SalePrice);
-            cmd.Parameters.AddWithValue("@cat", (object?)item.ItemCategory ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@stock", item.StockQuantity);
+            cmd.Parameters.AddWithValue("@catName", (object?)item.CategoryName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@threshold", item.MinStockThreshold);
             cmd.ExecuteNonQuery();
 
-            AppLogger.Info($"Item added: '{item.Description}' (Barcode: {item.ItemId})");
+            // Retrieve the auto-generated ItemId
+            using var idCmd = conn.CreateCommand();
+            idCmd.CommandText = "SELECT last_insert_rowid();";
+            item.Id = Convert.ToInt32(idCmd.ExecuteScalar()!);
+
+            // Record initial stock as a Purchase log entry
+            if (item.StockQuantity > 0)
+            {
+                RecordStockChange(item.Id, item.StockQuantity, "Purchase");
+            }
+
+            AppLogger.Info($"Item added: '{item.Description}' (Barcode: {item.Barcode}, Id: {item.Id})");
         }
 
-        /// <summary>Updates an existing item by barcode. If newBarcode != oldBarcode, SQLite cascade updates will sync related records.</summary>
-        public void Update(Item item, string originalBarcode = null)
+        /// <summary>Updates an existing item.</summary>
+        public void Update(Item item)
         {
-            string targetBarcode = originalBarcode ?? item.ItemId;
+            Update(item, item.Barcode);
+        }
+
+        /// <summary>Updates an item, specifically handling barcode changes if originalBarcode is provided.</summary>
+        public void Update(Item item, string? originalBarcode)
+        {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                UPDATE Item SET 
-                    itemId        = @newId,
+                UPDATE Items SET 
+                    Barcode       = @barcode,
                     Description   = @desc,
                     CostPrice     = @cost,
                     SalePrice     = @sale,
-                    ItemCategory  = @cat,
+                    CategoryId    = (SELECT CategoryId FROM Categories WHERE Name = @catName),
                     MinStockThreshold = @threshold
-                WHERE itemId = @id;
+                WHERE ItemId = @id;
             ";
-            cmd.Parameters.AddWithValue("@newId", item.ItemId);
-            cmd.Parameters.AddWithValue("@id", targetBarcode);
+            cmd.Parameters.AddWithValue("@id", item.Id);
+            cmd.Parameters.AddWithValue("@barcode", string.IsNullOrWhiteSpace(item.Barcode) ? DBNull.Value : item.Barcode);
             cmd.Parameters.AddWithValue("@desc", item.Description);
             cmd.Parameters.AddWithValue("@cost", item.CostPrice);
             cmd.Parameters.AddWithValue("@sale", item.SalePrice);
-            cmd.Parameters.AddWithValue("@cat", (object?)item.ItemCategory ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@catName", (object?)item.CategoryName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@threshold", item.MinStockThreshold);
             cmd.ExecuteNonQuery();
 
-            AppLogger.Info($"Item updated: '{item.Description}' (Old Barcode: {targetBarcode}, New Barcode: {item.ItemId})");
+            AppLogger.Info($"Item updated: '{item.Description}' (Barcode: {item.Barcode})");
+        }
+
+        /// <summary>Permanently deletes an item by internal ID.</summary>
+        public void Delete(int id)
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM Items WHERE ItemId = @id;";
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+            AppLogger.Info($"Item deleted: ID {id}");
         }
 
         /// <summary>Permanently deletes an item by barcode.</summary>
@@ -163,26 +209,38 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM Item WHERE itemId = @id;";
-            cmd.Parameters.AddWithValue("@id", barcode);
+            cmd.CommandText = "DELETE FROM Items WHERE Barcode = @barcode;";
+            cmd.Parameters.AddWithValue("@barcode", barcode);
             cmd.ExecuteNonQuery();
-
             AppLogger.Info($"Item deleted: Barcode {barcode}");
         }
 
+        /// <summary>Updates stock by recording a log entry (compatibility shim).</summary>
+        public void UpdateStock(string barcode, double change)
+        {
+            var item = GetByBarcode(barcode);
+            if (item != null)
+            {
+                RecordStockChange(item.Id, change, change > 0 ? "AdjustmentIn" : "AdjustmentOut", "Manual Stock Update");
+            }
+        }
+
         /// <summary>
-        /// Updates only the stock quantity for an item (thread-safe/atomic in SQLite).
+        /// Records a stock change in the InventoryLogs.
         /// </summary>
-        public void UpdateStock(string barcode, double quantityChange)
+        public void RecordStockChange(int itemId, double change, string type, string? note = null)
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE Item SET StockQuantity = StockQuantity + @change WHERE itemId = @id;";
-            cmd.Parameters.AddWithValue("@change", quantityChange);
-            cmd.Parameters.AddWithValue("@id", barcode);
+            cmd.CommandText = @"
+                INSERT INTO InventoryLogs (ItemId, QuantityChange, ChangeType) 
+                VALUES (@id, @change, @type);";
+            cmd.Parameters.AddWithValue("@id", itemId);
+            cmd.Parameters.AddWithValue("@change", change);
+            cmd.Parameters.AddWithValue("@type", type);
             cmd.ExecuteNonQuery();
 
-            AppLogger.Info($"Stock updated for {barcode}: {quantityChange:N2}");
+            AppLogger.Info($"Stock LOGGED for Item ID {itemId}: {change:N2} ({type})");
         }
 
 
@@ -192,14 +250,17 @@ namespace GroceryPOS.Data.Repositories
 
         private static Item MapItem(SqliteDataReader reader)
         {
+            var barcodeOrd = reader.GetOrdinal("Barcode");
             return new Item
             {
-                ItemId        = reader.GetString(reader.GetOrdinal("itemId")),
-                Description   = reader.GetString(reader.GetOrdinal("Description")),
-                CostPrice     = reader.GetDouble(reader.GetOrdinal("CostPrice")),
-                SalePrice     = reader.GetDouble(reader.GetOrdinal("SalePrice")),
-                ItemCategory  = reader.IsDBNull(reader.GetOrdinal("ItemCategory")) ? null : reader.GetString(reader.GetOrdinal("ItemCategory")),
-                StockQuantity = reader.GetDouble(reader.GetOrdinal("StockQuantity")),
+                Id                = reader.GetInt32(reader.GetOrdinal("ItemId")),
+                Barcode           = reader.IsDBNull(barcodeOrd) ? null : reader.GetString(barcodeOrd),
+                Description       = reader.GetString(reader.GetOrdinal("Description")),
+                CostPrice         = reader.GetDouble(reader.GetOrdinal("CostPrice")),
+                SalePrice         = reader.GetDouble(reader.GetOrdinal("SalePrice")),
+                CategoryId        = reader.IsDBNull(reader.GetOrdinal("CategoryId")) ? (int?)null : reader.GetInt32(reader.GetOrdinal("CategoryId")),
+                CategoryName      = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName")),
+                StockQuantity     = reader.GetDouble(reader.GetOrdinal("StockQuantity")),
                 MinStockThreshold = reader.GetDouble(reader.GetOrdinal("MinStockThreshold"))
             };
         }

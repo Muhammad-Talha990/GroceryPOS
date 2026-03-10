@@ -5,112 +5,113 @@ namespace GroceryPOS.Models
 {
     /// <summary>
     /// Represents a completed sale/bill transaction.
-    /// Maps to the "Bill" table in SQLite.
+    /// Maps to the "Bills" table in the normalized 3NF schema.
+    /// Totals and remaining amounts are calculated from joined tables.
     /// </summary>
     public class Bill
     {
-        /// <summary>Auto-increment primary key.</summary>
+        /// <summary>Database Internal ID (Primary Key).</summary>
         public int BillId { get; set; }
-
-        /// <summary>Date/time of the bill.</summary>
-        public DateTime BillDateTime { get; set; } = DateTime.Now;
-
-        /// <summary>Sum of all line item totals before discount/tax.</summary>
-        public double SubTotal { get; set; }
-
-        /// <summary>Flat discount amount applied to the bill.</summary>
-        public double DiscountAmount { get; set; }
-
-        /// <summary>Tax amount applied to the bill.</summary>
-        public double TaxAmount { get; set; }
-
-        /// <summary>Final total: SubTotal - DiscountAmount + TaxAmount.</summary>
-        public double GrandTotal { get; set; }
-
-        /// <summary>Cash received from the customer.</summary>
-        public double CashReceived { get; set; }
-
-        /// <summary>Change returned: CashReceived - GrandTotal.</summary>
-        public double ChangeGiven { get; set; }
-
-        /// <summary>ID of the user/cashier who processed the bill.</summary>
-        public int? UserId { get; set; }
-
-        /// <summary>ID of the customer (nullable for walk-ins).</summary>
-        public int? CustomerId { get; set; }
 
         /// <summary>Formatted invoice number (e.g., 00001).</summary>
         public string InvoiceNumber => BillId.ToString("D5");
 
-        /// <summary>Parsed DateTime for XAML formatting.</summary>
-        public DateTime SaleDate => BillDateTime;
+        /// <summary>Date/time when the bill was created.</summary>
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
 
-        /// <summary>Navigation — line items on this bill (not stored in DB).</summary>
-        public List<BillDescription> Items { get; set; } = new();
+        /// <summary>Compatibility shim for old code.</summary>
+        public DateTime BillDateTime { get => CreatedAt; set => CreatedAt = value; }
+        public DateTime SaleDate => CreatedAt;
 
-        /// <summary>Navigation — user/cashier who processed this bill.</summary>
-        public User? User { get; set; }
-
-        /// <summary>Navigation — customer associated with this bill.</summary>
+        /// <summary>Foreign Key to Customers table.</summary>
+        public int? CustomerId { get; set; }
         public Customer? Customer { get; set; }
 
-        /// <summary>Current status of the bill (e.g., Completed, Cancelled, Replaced).</summary>
+        /// <summary>Foreign Key to Users table.</summary>
+        public int? UserId { get; set; }
+        public User? User { get; set; }
+
+        /// <summary>Status of the bill ('Completed', 'Cancelled').</summary>
         public string Status { get; set; } = "Completed";
 
-        /// <summary>Reference to the original bill ID for corrections (legacy).</summary>
-        public int? ReferenceBillId { get; set; }
-
-        /// <summary>Professional Type: "Sale" or "Return".</summary>
+        /// <summary>Type of the transaction ('Sale', 'Return').</summary>
         public string Type { get; set; } = "Sale";
 
-        /// <summary>FK to parent Bill for returns.</summary>
+        /// <summary>Links a return to its original sale bill.</summary>
         public int? ParentBillId { get; set; }
 
-        // --- Print Tracking ---
-        /// <summary>Whether the receipt has been successfully printed.</summary>
-        public bool IsPrinted { get; set; }
-        /// <summary>When the receipt was successfully printed.</summary>
-        public DateTime? PrintedAt { get; set; }
-        /// <summary>Number of failed or successful print attempts.</summary>
-        public int PrintAttempts { get; set; }
+        /// <summary>Compatibility shim for old code.</summary>
+        public int? ReferenceBillId => ParentBillId;
 
-        // --- Credit Tracking ---
-        /// <summary>Amount actually paid at time of sale (may be less than GrandTotal for credit).</summary>
-        public double PaidAmount { get; set; }
-
-        /// <summary>Outstanding balance = GrandTotal - PaidAmount. Stored in DB.</summary>
-        public double RemainingAmount { get; set; }
-
-        /// <summary>"Paid" | "Partial" | "Unpaid"</summary>
-        public string PaymentStatus { get; set; } = "Paid";
-
-        /// <summary>The specific address selected for this bill (from customer's options).</summary>
-        public string? BillingAddress { get; set; }
-
-        /// <summary>Helper to check if this bill needs printing.</summary>
-        public bool IsPendingPrint => !IsPrinted && Status != "Cancelled";
-
-        /// <summary>Helper to check if this is a return bill.</summary>
+        /// <summary>Helper property for UI.</summary>
         public bool IsReturn => Type == "Return";
 
-        /// <summary>True when customer still owes money on this bill.</summary>
-        public bool HasPendingCredit => RemainingAmount > 0 && Status != "Cancelled";
+        /// <summary>Grandparent reference for complex return logic (optional).</summary>
+        public Bill? ParentBill { get; set; }
 
-        /// <summary>UI color key for payment status badges.</summary>
+        /// <summary>Related return history for the original bill (optional).</summary>
+        public List<Bill> ReturnHistory { get; set; } = new();
+
+        /// <summary>Flat tax amount applied to this bill.</summary>
+        public double TaxAmount { get; set; }
+
+        /// <summary>Flat discount amount applied to this bill.</summary>
+        public double DiscountAmount { get; set; }
+
+        // ── Calculated Properties (Populated via Repositories) ──
+
+        /// <summary>Sum of (Quantity * UnitPrice) for all line items.</summary>
+        public double SubTotal { get; set; }
+
+        /// <summary>Final total: SubTotal + TaxAmount - DiscountAmount.</summary>
+        public double GrandTotal => SubTotal + TaxAmount - DiscountAmount;
+
+        /// <summary>Total amount successfully paid (from Payments table).</summary>
+        public double PaidAmount { get; set; }
+
+        /// <summary>Outstanding balance: GrandTotal - PaidAmount.</summary>
+        public double RemainingAmount => Math.Max(0, GrandTotal - PaidAmount);
+
+        /// <summary>Navigation property for line items.</summary>
+        public List<BillDescription> Items { get; set; } = new();
+
+        /// <summary>Returns calculated based on this bill.</summary>
+        public List<BillDescription> ReturnedItems { get; set; } = new();
+
+        // ── UI Helpers ──
+
+        public bool IsPrinted { get; set; }
+        public DateTime? PrintedAt { get; set; }
+        public int PrintAttempts { get; set; }
+        public bool IsPendingPrint => !IsPrinted && Status != "Cancelled";
+
+        public string PaymentStatus => RemainingAmount <= 0 ? "Paid" : (PaidAmount > 0 ? "Partial" : "Unpaid");
+
         public string PaymentStatusColor => PaymentStatus switch
         {
-            "Paid"    => "#22C55E",  // green
-            "Partial" => "#F59E0B",  // amber
-            "Unpaid"  => "#EF4444",  // red
-            _         => "#94A3B8"   // slate
+            "Paid"    => "#22C55E",
+            "Partial" => "#F59E0B",
+            "Unpaid"  => "#EF4444",
+            _         => "#94A3B8"
         };
 
-        // --- Return Metadata (UI Only) ---
-        /// <summary>The original bill this return belongs to.</summary>
-        public Bill? ParentBill { get; set; }
-        /// <summary>Other returns associated with the same parent bill.</summary>
-        public List<Bill> ReturnHistory { get; set; } = new();
+        public bool HasPendingCredit => RemainingAmount > 0 && Status != "Cancelled";
+
         /// <summary>Calculated summary for UI display of returns.</summary>
         public double RemainingDueAfterThisReturn { get; set; }
+
+        // ── Storage/Transient Properties (For Receipt & Legacy Support) ──
+        
+        /// <summary>Amount of cash physically tendered by the customer.</summary>
+        public double CashReceived { get; set; }
+
+        /// <summary>Change returned to the customer.</summary>
+        public double ChangeGiven { get; set; }
+
+        /// <summary>Optional billing address for the customer.</summary>
+        public string? BillingAddress { get; set; }
+
+        /// <summary>Payment method used for this bill (Cash, Card, Credit).</summary>
+        public string PaymentMethod { get; set; } = "Cash";
     }
 }

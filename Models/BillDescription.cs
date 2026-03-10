@@ -4,25 +4,33 @@ namespace GroceryPOS.Models
 {
     /// <summary>
     /// Represents a single line item on a bill.
-    /// Stores the UnitPrice at time of sale for price history integrity.
-    /// Maps to the "BillDescription" table in SQLite.
+    /// Maps to the "BillItems" table in the normalized 3NF schema.
     /// </summary>
     public class BillDescription : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        /// <summary>Auto-increment primary key.</summary>
-        public int Id { get; set; }
+        /// <summary>Database Internal ID (Primary Key).</summary>
+        public int BillItemId { get; set; }
 
-        /// <summary>Foreign key to Bill.bill_id.</summary>
+        /// <summary>Backward-compat alias.</summary>
+        public int Id { get => BillItemId; set => BillItemId = value; }
+
+        /// <summary>Foreign key to Bills table.</summary>
         public int BillId { get; set; }
 
-        /// <summary>Foreign key to Item.itemId (barcode).</summary>
+        /// <summary>Internal Database ID of the Item.</summary>
+        public int ItemInternalId { get; set; }
+
+        /// <summary>Product ID as string (= ItemInternalId.ToString()).</summary>
         public string ItemId { get; set; } = string.Empty;
 
-        private int _quantity;
+        /// <summary>Product barcode (may be null for items without barcode).</summary>
+        public string? Barcode { get; set; }
+
+        private double _quantity;
         /// <summary>Quantity of this item sold.</summary>
-        public int Quantity
+        public double Quantity
         {
             get => _quantity;
             set
@@ -31,7 +39,7 @@ namespace GroceryPOS.Models
                 {
                     _quantity = value;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Quantity)));
-                    TotalPrice = _quantity * UnitPrice;
+                    TotalPrice = _quantity * UnitPrice - DiscountAmount;
                 }
             }
         }
@@ -39,8 +47,24 @@ namespace GroceryPOS.Models
         /// <summary>Unit price at time of sale (frozen for history).</summary>
         public double UnitPrice { get; set; }
 
+        private double _discountAmount;
+        /// <summary>Flat discount applied to this specific line item.</summary>
+        public double DiscountAmount
+        {
+            get => _discountAmount;
+            set
+            {
+                if (_discountAmount != value)
+                {
+                    _discountAmount = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DiscountAmount)));
+                    TotalPrice = Quantity * UnitPrice - _discountAmount;
+                }
+            }
+        }
+
         private double _totalPrice;
-        /// <summary>Line total: Quantity × UnitPrice.</summary>
+        /// <summary>Line total: (Quantity × UnitPrice) - DiscountAmount.</summary>
         public double TotalPrice
         {
             get => _totalPrice;
@@ -53,8 +77,6 @@ namespace GroceryPOS.Models
                 }
             }
         }
-
-        // ── Convenience properties (not stored in DB) ──
 
         /// <summary>Item description, populated by JOIN or lookup.</summary>
         public string ItemDescription { get; set; } = string.Empty;

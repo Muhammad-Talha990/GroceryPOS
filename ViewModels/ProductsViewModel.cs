@@ -105,6 +105,9 @@ namespace GroceryPOS.ViewModels
             LoadProducts();
         }
 
+        /// <summary>Called by MainViewModel when this page becomes the active view.</summary>
+        public void OnActivated() => LoadProducts();
+
         private void LoadCategories()
         {
             Categories.Clear();
@@ -169,9 +172,9 @@ namespace GroceryPOS.ViewModels
             if (item == null) { ClearForm(); return; }
 
             IsEditing = true;
-            _originalBarcode = item.ItemId;
+            _originalBarcode = item.Barcode;
             FormName = item.Description;
-            FormBarcode = item.ItemId;
+            FormBarcode = item.Barcode ?? string.Empty;
             FormCategory = item.ItemCategory ?? string.Empty;
             FormCostPrice = item.CostPrice.ToString("F2");
             FormSalePrice = item.SalePrice.ToString("F2");
@@ -188,7 +191,7 @@ namespace GroceryPOS.ViewModels
 
                 var item = new Item
                 {
-                    ItemId = FormBarcode.Trim(),
+                    Barcode = string.IsNullOrWhiteSpace(FormBarcode) ? null : FormBarcode.Trim(),
                     Description = FormName.Trim(),
                     CostPrice = double.Parse(FormCostPrice),
                     SalePrice = double.Parse(FormSalePrice),
@@ -219,10 +222,11 @@ namespace GroceryPOS.ViewModels
                 if (SelectedProduct == null) { StatusMessage = "Please select an item to update."; return; }
                 if (!ValidateForm()) return;
 
-                var newBarcode = FormBarcode.Trim();
+                var newBarcode = string.IsNullOrWhiteSpace(FormBarcode) ? null : FormBarcode.Trim();
                 var item = new Item
                 {
-                    ItemId = newBarcode,
+                    Id = SelectedProduct.Id,
+                    Barcode = newBarcode,
                     Description = FormName.Trim(),
                     CostPrice = double.Parse(FormCostPrice),
                     SalePrice = double.Parse(FormSalePrice),
@@ -232,7 +236,7 @@ namespace GroceryPOS.ViewModels
                 };
 
                 // Update using original barcode (handles PK change if any via ON UPDATE CASCADE)
-                _itemService.UpdateItem(item, _originalBarcode);
+                _itemService.UpdateItem(item, _originalBarcode!);
 
                 StatusMessage = $"✓ Item '{FormName}' updated!";
                 ClearForm();
@@ -252,7 +256,7 @@ namespace GroceryPOS.ViewModels
             if (SelectedProduct == null) { StatusMessage = "Please select an item to delete."; return; }
 
             // Capture item details BEFORE deletion, because UI might null SelectedProduct when collection changes
-            string itemId = SelectedProduct.ItemId;
+            int itemId = SelectedProduct.Id;
             string description = SelectedProduct.Description;
 
             var result = MessageBox.Show($"Are you sure you want to delete '{description}'?\n\nWarning: This will permanently remove the item from the database.",
@@ -286,8 +290,6 @@ namespace GroceryPOS.ViewModels
 
         private bool ValidateForm()
         {
-            if (string.IsNullOrWhiteSpace(FormBarcode))
-            { StatusMessage = "Barcode is required."; return false; }
             if (string.IsNullOrWhiteSpace(FormName))
             { StatusMessage = "Item description is required."; return false; }
             if (!double.TryParse(FormCostPrice, out var cost) || cost < 0)

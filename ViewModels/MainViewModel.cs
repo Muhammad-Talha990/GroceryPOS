@@ -93,7 +93,7 @@ namespace GroceryPOS.ViewModels
             CurrentView = view switch
             {
                 "Dashboard"    => _serviceProvider.GetRequiredService<DashboardViewModel>(),
-                "Products"     => _serviceProvider.GetRequiredService<ProductsViewModel>(),
+                "Products"     => ActivateProducts(),
                 "Billing"      => _serviceProvider.GetRequiredService<BillingViewModel>(),
                 "Reports"      => _serviceProvider.GetRequiredService<ReportsViewModel>(),
                 "SupplierBills"=> _serviceProvider.GetRequiredService<SupplierBillsViewModel>(),
@@ -112,6 +112,13 @@ namespace GroceryPOS.ViewModels
                 PendingLedgerCustomerId = customerId;
                 NavigateTo("CustomerLedger");
             };
+            return vm;
+        }
+
+        private ProductsViewModel ActivateProducts()
+        {
+            var vm = _serviceProvider.GetRequiredService<ProductsViewModel>();
+            vm.OnActivated();
             return vm;
         }
 

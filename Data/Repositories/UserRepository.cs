@@ -7,7 +7,7 @@ using GroceryPOS.Models;
 namespace GroceryPOS.Data.Repositories
 {
     /// <summary>
-    /// Data access for the User table.
+    /// Data access for the Users table.
     /// Provides operations using raw SQL with parameterized queries.
     /// </summary>
     public class UserRepository
@@ -18,7 +18,7 @@ namespace GroceryPOS.Data.Repositories
             var users = new List<User>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM User ORDER BY FullName;";
+            cmd.CommandText = "SELECT * FROM Users ORDER BY FullName;";
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -32,7 +32,7 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM User WHERE Username = @user AND IsActive = 1;";
+            cmd.CommandText = "SELECT * FROM Users WHERE Username = @user AND IsActive = 1;";
             cmd.Parameters.AddWithValue("@user", username);
 
             using var reader = cmd.ExecuteReader();
@@ -44,7 +44,7 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT * FROM User WHERE Id = @id;";
+            cmd.CommandText = "SELECT * FROM Users WHERE Id = @id;";
             cmd.Parameters.AddWithValue("@id", id);
 
             using var reader = cmd.ExecuteReader();
@@ -62,7 +62,7 @@ namespace GroceryPOS.Data.Repositories
                 FullName     = reader.GetString(reader.GetOrdinal("FullName")),
                 Role         = reader.GetString(reader.GetOrdinal("Role")),
                 IsActive     = reader.GetInt32(reader.GetOrdinal("IsActive")) == 1,
-                CreatedAt    = DateTime.Parse(reader.GetString(reader.GetOrdinal("CreatedAt")))
+                CreatedAt    = reader.GetDateTime(reader.GetOrdinal("CreatedAt"))
             };
         }
     }

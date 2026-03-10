@@ -37,7 +37,7 @@ namespace GroceryPOS.Services
                 throw new InvalidOperationException($"Insufficient stock for '{item.Description}'. Available: {item.StockQuantity}, Requested: {quantity}");
 
             _itemRepo.UpdateStock(barcode, -quantity);
-            _cache.UpdateStockInCache(barcode, -quantity);
+            _cache.UpdateStockInCache(item.Id, -quantity);
             StockChanged?.Invoke();
         }
 
@@ -51,7 +51,7 @@ namespace GroceryPOS.Services
                 throw new InvalidOperationException($"Product with barcode {barcode} not found.");
 
             _itemRepo.UpdateStock(barcode, quantity);
-            _cache.UpdateStockInCache(barcode, quantity);
+            _cache.UpdateStockInCache(item.Id, quantity);
             StockChanged?.Invoke();
         }
 
@@ -76,36 +76,27 @@ namespace GroceryPOS.Services
             using var transaction = conn.BeginTransaction();
             try
             {
-                // 3a. Save Entry to stock table
+                // 3a. Save Entry to InventoryLogs
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = transaction;
                     cmd.CommandText = @"
-                        INSERT INTO stock (product_id, bill_id, quantity, system_date, image_path)
-                        VALUES (@pid, @bid, @qty, @dt, @img);
+                        INSERT INTO InventoryLogs (ItemId, QuantityChange, ChangeType, ReferenceType, LogDate, ImagePath)
+                        VALUES ((SELECT ItemId FROM Items WHERE Barcode = @pid), @qty, 'Purchase', 'Supply', @dt, @img);
                     ";
                     cmd.Parameters.AddWithValue("@pid", entry.ProductId);
-                    cmd.Parameters.AddWithValue("@bid", entry.BillId);
                     cmd.Parameters.AddWithValue("@qty", entry.Quantity);
                     cmd.Parameters.AddWithValue("@dt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                    cmd.Parameters.AddWithValue("@img", (object?)entry.ImagePath ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@img", (object?)permanentImagePath ?? DBNull.Value);
                     cmd.ExecuteNonQuery();
-                }
-
-                // 3b. Update Main Product Stock
-                using (var updateCmd = conn.CreateCommand())
-                {
-                    updateCmd.Transaction = transaction;
-                    updateCmd.CommandText = "UPDATE Item SET StockQuantity = StockQuantity + @qty WHERE itemId = @pid;";
-                    updateCmd.Parameters.AddWithValue("@qty", entry.Quantity);
-                    updateCmd.Parameters.AddWithValue("@pid", entry.ProductId);
-                    updateCmd.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
 
                 // 4. Update Cache & UI
-                _cache.UpdateStockInCache(entry.ProductId, entry.Quantity);
+                var addedItem = _itemRepo.GetByBarcode(entry.ProductId);
+                if (addedItem != null)
+                    _cache.UpdateStockInCache(addedItem.Id, entry.Quantity);
                 StockChanged?.Invoke();
 
                 AppLogger.Info($"Supply registered: {entry.Quantity} units for {entry.ProductId}. Bill ID: {entry.BillId}");
@@ -129,25 +120,25 @@ namespace GroceryPOS.Services
             using var conn = Data.DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT s.*, i.Description AS ProductName
-                FROM stock s 
-                LEFT JOIN Item i ON s.product_id = i.itemId
-                WHERE s.product_id = @pid 
-                ORDER BY s.system_date DESC;";
+                SELECT l.*, i.Description AS ProductName, i.Barcode as product_id
+                FROM InventoryLogs l 
+                LEFT JOIN Items i ON l.ItemId = i.ItemId
+                WHERE i.Barcode = @pid AND l.ReferenceType = 'Supply'
+                ORDER BY l.LogDate DESC;";
             cmd.Parameters.AddWithValue("@pid", productId);
 
             using var reader = await cmd.ExecuteReaderAsync();
+            var imgOrd = reader.GetOrdinal("ImagePath");
             while (reader.Read())
             {
                 history.Add(new Stock
                 {
-                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                    Id = reader.GetInt32(reader.GetOrdinal("LogId")),
                     ProductId = reader.GetString(reader.GetOrdinal("product_id")),
-                    BillId = reader.GetString(reader.GetOrdinal("bill_id")),
-                    Quantity = reader.GetInt32(reader.GetOrdinal("quantity")),
-                    SystemDate = DateTime.Parse(reader.GetString(reader.GetOrdinal("system_date"))),
-                    ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path")),
-                    ProductName = reader.IsDBNull(reader.GetOrdinal("ProductName")) ? "" : reader.GetString(reader.GetOrdinal("ProductName"))
+                    Quantity = (int)reader.GetDouble(reader.GetOrdinal("QuantityChange")),
+                    SystemDate = DateTime.TryParse(reader.GetString(reader.GetOrdinal("LogDate")), out var dt) ? dt : DateTime.Now,
+                    ProductName = reader.IsDBNull(reader.GetOrdinal("ProductName")) ? "" : reader.GetString(reader.GetOrdinal("ProductName")),
+                    ImagePath = reader.IsDBNull(imgOrd) ? null : reader.GetString(imgOrd)
                 });
             }
             return history;
@@ -161,19 +152,23 @@ namespace GroceryPOS.Services
             Stock? existing = null;
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "SELECT * FROM stock WHERE Id = @id;";
+                cmd.CommandText = @"
+                    SELECT l.*, i.Barcode as product_id
+                    FROM InventoryLogs l
+                    JOIN Items i ON l.ItemId = i.ItemId
+                    WHERE l.LogId = @id;";
                 cmd.Parameters.AddWithValue("@id", entry.Id);
                 using (var reader = await cmd.ExecuteReaderAsync())
                 {
                     if (reader.Read())
                     {
+                        var eImgOrd = reader.GetOrdinal("ImagePath");
                         existing = new Stock
                         {
-                            Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                            Id = reader.GetInt32(reader.GetOrdinal("LogId")),
                             ProductId = reader.GetString(reader.GetOrdinal("product_id")),
-                            BillId = reader.GetString(reader.GetOrdinal("bill_id")),
-                            Quantity = reader.GetInt32(reader.GetOrdinal("quantity")),
-                            ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path"))
+                            Quantity = (int)reader.GetDouble(reader.GetOrdinal("QuantityChange")),
+                            ImagePath = reader.IsDBNull(eImgOrd) ? null : reader.GetString(eImgOrd)
                         };
                     }
                 }
@@ -201,32 +196,19 @@ namespace GroceryPOS.Services
             using var transaction = conn.BeginTransaction();
             try
             {
-                // 3. Update stock table
+                // 3. Update InventoryLogs entry
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = transaction;
                     cmd.CommandText = @"
-                        UPDATE stock 
-                        SET quantity = @qty, image_path = @img 
-                        WHERE Id = @id;
+                        UPDATE InventoryLogs 
+                        SET QuantityChange = @qty, ImagePath = @img 
+                        WHERE LogId = @id;
                     ";
-                    cmd.Parameters.AddWithValue("@qty", entry.Quantity);
+                    cmd.Parameters.AddWithValue("@qty", (double)entry.Quantity);
                     cmd.Parameters.AddWithValue("@img", (object?)permanentImagePath ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@id", entry.Id);
                     cmd.ExecuteNonQuery();
-                }
-
-                // 4. Update Main Product Stock
-                if (qtyDifference != 0)
-                {
-                    using (var updateCmd = conn.CreateCommand())
-                    {
-                        updateCmd.Transaction = transaction;
-                        updateCmd.CommandText = "UPDATE Item SET StockQuantity = StockQuantity + @diff WHERE itemId = @pid;";
-                        updateCmd.Parameters.AddWithValue("@diff", qtyDifference);
-                        updateCmd.Parameters.AddWithValue("@pid", entry.ProductId);
-                        updateCmd.ExecuteNonQuery();
-                    }
                 }
 
                 transaction.Commit();
@@ -234,7 +216,9 @@ namespace GroceryPOS.Services
                 // 5. Update Cache & UI
                 if (qtyDifference != 0)
                 {
-                    _cache.UpdateStockInCache(entry.ProductId, qtyDifference);
+                    var updatedItem = _itemRepo.GetByBarcode(entry.ProductId);
+                    if (updatedItem != null)
+                        _cache.UpdateStockInCache(updatedItem.Id, qtyDifference);
                 }
                 StockChanged?.Invoke();
 
@@ -255,25 +239,26 @@ namespace GroceryPOS.Services
             using var conn = Data.DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT s.*, i.Description AS ProductName
-                FROM stock s 
-                LEFT JOIN Item i ON s.product_id = i.itemId
-                ORDER BY s.system_date DESC 
+                SELECT l.*, i.Description AS ProductName, i.Barcode as product_id
+                FROM InventoryLogs l 
+                LEFT JOIN Items i ON l.ItemId = i.ItemId
+                WHERE l.ReferenceType = 'Supply'
+                ORDER BY l.LogDate DESC 
                 LIMIT @limit;";
             cmd.Parameters.AddWithValue("@limit", limit);
 
             using var reader = await cmd.ExecuteReaderAsync();
+            var imgOrd = reader.GetOrdinal("ImagePath");
             while (reader.Read())
             {
                 history.Add(new Stock
                 {
-                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                    Id = reader.GetInt32(reader.GetOrdinal("LogId")),
                     ProductId = reader.GetString(reader.GetOrdinal("product_id")),
-                    BillId = reader.GetString(reader.GetOrdinal("bill_id")),
-                    Quantity = reader.GetInt32(reader.GetOrdinal("quantity")),
-                    SystemDate = DateTime.Parse(reader.GetString(reader.GetOrdinal("system_date"))),
-                    ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path")),
-                    ProductName = reader.IsDBNull(reader.GetOrdinal("ProductName")) ? "" : reader.GetString(reader.GetOrdinal("ProductName"))
+                    Quantity = (int)reader.GetDouble(reader.GetOrdinal("QuantityChange")),
+                    SystemDate = DateTime.TryParse(reader.GetString(reader.GetOrdinal("LogDate")), out var dt) ? dt : DateTime.Now,
+                    ProductName = reader.IsDBNull(reader.GetOrdinal("ProductName")) ? "" : reader.GetString(reader.GetOrdinal("ProductName")),
+                    ImagePath = reader.IsDBNull(imgOrd) ? null : reader.GetString(imgOrd)
                 });
             }
             return history;
@@ -287,7 +272,11 @@ namespace GroceryPOS.Services
             Stock? entry = null;
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "SELECT * FROM stock WHERE Id = @id;";
+                cmd.CommandText = @"
+                    SELECT l.*, i.Barcode as product_id
+                    FROM InventoryLogs l
+                    JOIN Items i ON l.ItemId = i.ItemId
+                    WHERE l.LogId = @id;";
                 cmd.Parameters.AddWithValue("@id", stockId);
                 using (var reader = await cmd.ExecuteReaderAsync())
                 {
@@ -295,11 +284,9 @@ namespace GroceryPOS.Services
                     {
                         entry = new Stock
                         {
-                            Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                            Id = reader.GetInt32(reader.GetOrdinal("LogId")),
                             ProductId = reader.GetString(reader.GetOrdinal("product_id")),
-                            BillId = reader.GetString(reader.GetOrdinal("bill_id")),
-                            Quantity = reader.GetInt32(reader.GetOrdinal("quantity")),
-                            ImagePath = reader.IsDBNull(reader.GetOrdinal("image_path")) ? null : reader.GetString(reader.GetOrdinal("image_path"))
+                            Quantity = (int)reader.GetDouble(reader.GetOrdinal("QuantityChange"))
                         };
                     }
                 }
@@ -310,23 +297,13 @@ namespace GroceryPOS.Services
             using var transaction = conn.BeginTransaction();
             try
             {
-                // 2. Delete from stock table
+                // 2. Delete from InventoryLogs
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = transaction;
-                    cmd.CommandText = "DELETE FROM stock WHERE Id = @id;";
+                    cmd.CommandText = "DELETE FROM InventoryLogs WHERE LogId = @id;";
                     cmd.Parameters.AddWithValue("@id", stockId);
                     cmd.ExecuteNonQuery();
-                }
-
-                // 3. Revert Main Product Stock
-                using (var updateCmd = conn.CreateCommand())
-                {
-                    updateCmd.Transaction = transaction;
-                    updateCmd.CommandText = "UPDATE Item SET StockQuantity = StockQuantity - @qty WHERE itemId = @pid;";
-                    updateCmd.Parameters.AddWithValue("@qty", entry.Quantity);
-                    updateCmd.Parameters.AddWithValue("@pid", entry.ProductId);
-                    updateCmd.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
@@ -338,7 +315,9 @@ namespace GroceryPOS.Services
                 }
 
                 // 5. Update Cache & UI
-                _cache.UpdateStockInCache(entry.ProductId, -entry.Quantity);
+                var deletedItem = _itemRepo.GetByBarcode(entry.ProductId);
+                if (deletedItem != null)
+                    _cache.UpdateStockInCache(deletedItem.Id, -entry.Quantity);
                 StockChanged?.Invoke();
 
                 AppLogger.Info($"Supply deleted: {entry.Quantity} units for {entry.ProductId}. Bill ID: {entry.BillId}");
@@ -355,6 +334,19 @@ namespace GroceryPOS.Services
         public bool IsStockAvailable(string barcode, double requiredQuantity, out double availableQuantity)
         {
             var item = _itemRepo.GetByBarcode(barcode);
+            if (item == null)
+            {
+                availableQuantity = 0;
+                return false;
+            }
+
+            availableQuantity = item.StockQuantity;
+            return item.StockQuantity >= requiredQuantity;
+        }
+
+        public bool IsStockAvailable(int itemId, double requiredQuantity, out double availableQuantity)
+        {
+            var item = _itemRepo.GetById(itemId);
             if (item == null)
             {
                 availableQuantity = 0;

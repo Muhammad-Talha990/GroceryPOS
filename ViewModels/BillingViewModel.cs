@@ -227,6 +227,16 @@ namespace GroceryPOS.ViewModels
         public ICommand RemoveFromCartCommand { get; }
         public ICommand IncreaseQuantityCommand { get; }
         public ICommand DecreaseQuantityCommand { get; }
+        // ── Payment Method ──
+        public List<string> PaymentMethods { get; } = new() { "Cash", "Card" };
+
+        private string _selectedPaymentMethod = "Cash";
+        public string SelectedPaymentMethod
+        {
+            get => _selectedPaymentMethod;
+            set => SetProperty(ref _selectedPaymentMethod, value);
+        }
+
         public ICommand CompleteSaleCommand { get; }
         public ICommand ClearCartCommand { get; }
         public ICommand AddTabCommand { get; }
@@ -284,7 +294,7 @@ namespace GroceryPOS.ViewModels
             FinishCartEditCommand = new RelayCommand(_ => { SelectedCartItem = null; OnPropertyChanged(nameof(SelectedCartItem)); RefocusBarcode(); });
             NavigateSearchCommand = new RelayCommand(p => NavigateSearchResults(p?.ToString()));
             NavigateProductSearchCommand = new RelayCommand(p => NavigateProductResults(p?.ToString()));
-            PrintBillCommand = new RelayCommand(_ => AttemptPrint(SelectedTab?.PreviewHistoryBill));
+            PrintBillCommand = new RelayCommand(async _ => { if (SelectedTab?.PreviewHistoryBill is Bill b) await AttemptPrint(b); });
 
             AddAddressCommand = new RelayCommand(_ => { IsAddingAddress = true; NewAddressInput = ""; });
             CancelAddAddressCommand = new RelayCommand(_ => { IsAddingAddress = false; NewAddressInput = ""; });
@@ -296,9 +306,12 @@ namespace GroceryPOS.ViewModels
         private void FilterProducts()
         {
             var query = ProductSearchText ?? "";
+            // Always fetch fresh from cache so newly added products appear instantly
+            var allItems = _itemService.GetAllItems();
             var filtered = string.IsNullOrWhiteSpace(query) 
-                ? ItemList.ToList() 
-                : ItemList.Where(i => i.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+                ? allItems 
+                : allItems.Where(i => i.Description.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || (!string.IsNullOrEmpty(i.Barcode) && i.Barcode.Contains(query, StringComparison.OrdinalIgnoreCase))).ToList();
 
             // Stabilize UI by modifying the collection instead of reassigning it
             var toRemove = FilteredItemList.Where(i => !filtered.Contains(i)).ToList();
@@ -341,10 +354,12 @@ namespace GroceryPOS.ViewModels
             StatusMessage = string.Empty;
             OnPropertyChanged(nameof(StatusMessage));
 
-            string bc = !string.IsNullOrWhiteSpace(BarcodeInput) ? BarcodeInput : SelectedSearchItem?.ItemId ?? ""; 
+            string bc = !string.IsNullOrWhiteSpace(BarcodeInput) ? BarcodeInput : SelectedSearchItem?.Barcode ?? SelectedSearchItem?.ItemId ?? ""; 
             if (string.IsNullOrWhiteSpace(bc)) return; 
             
-            var it = _itemService.GetItemByBarcode(bc); 
+            // Try barcode lookup first, then fall back to ID lookup
+            var it = _itemService.GetItemByBarcode(bc)
+                  ?? (int.TryParse(bc, out var id) ? _itemService.GetItemById(id) : null);
             if (it != null) 
             { 
                 AddToCart(it); 
@@ -356,7 +371,7 @@ namespace GroceryPOS.ViewModels
                 OnPropertyChanged(nameof(ProductSearchText));
                 OnPropertyChanged(nameof(IsProductDropDownOpen));
             } 
-            else { StatusMessage = "✗ Item not found."; OnPropertyChanged(nameof(StatusMessage)); } 
+            else { StatusMessage = "✗ Product not found."; OnPropertyChanged(nameof(StatusMessage)); } 
         }
         private void AddToCart(Item it) 
         { 
@@ -364,26 +379,26 @@ namespace GroceryPOS.ViewModels
             var ex = SelectedTab.CartItems.FirstOrDefault(i => i.ItemId == it.ItemId); 
             if (ex != null) 
             {
-                int totalRequested = ex.Quantity + QuantityInput;
-                if (totalRequested >= it.StockQuantity)
+                double totalRequested = ex.Quantity + QuantityInput;
+                if (totalRequested > it.StockQuantity)
                 {
-                    if (totalRequested > it.StockQuantity)
-                    {
-                        ex.Quantity = (int)it.StockQuantity;
-                        ShowSystemError($"X Available Stock: {it.StockQuantity}");
-                    }
-                    else
-                    {
-                        ex.Quantity = totalRequested;
-                    }
+                    ShowSystemError($"X Available Stock: {it.StockQuantity}");
                     StatusMessage = $"⚠ Available Stock: {it.StockQuantity}";
                     OnPropertyChanged(nameof(StatusMessage));
                 }
                 else
                 {
                     ex.Quantity = totalRequested;
-                    StatusMessage = "";
-                    OnPropertyChanged(nameof(StatusMessage));
+                    if (totalRequested == it.StockQuantity)
+                    {
+                        StatusMessage = $"⚠ Available Stock: {it.StockQuantity}";
+                        OnPropertyChanged(nameof(StatusMessage));
+                    }
+                    else if (StatusMessage.Contains("Available Stock"))
+                    {
+                        StatusMessage = "";
+                        OnPropertyChanged(nameof(StatusMessage));
+                    }
                 }
             }
             else 
@@ -427,6 +442,7 @@ namespace GroceryPOS.ViewModels
                     SelectedTab.CartItems.Add(new CartItem 
                     { 
                         ItemId = it.ItemId, 
+                        Barcode = it.Barcode,
                         ItemDescription = it.Description, 
                         UnitPrice = it.SalePrice, 
                         Quantity = quantityToAdd,
@@ -534,7 +550,7 @@ namespace GroceryPOS.ViewModels
                     paidAmount = grand; 
                 }
 
-                var sb = _billService.CompleteBill(_authService.CurrentUser?.Id, SelectedCustomer?.CustomerId, SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), d, t, cashReceived, paidAmount, SelectedBillingAddress);
+                var sb = _billService.CompleteBill(_authService.CurrentUser?.Id, SelectedCustomer?.CustomerId, SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), d, t, cashReceived, paidAmount, SelectedBillingAddress, SelectedPaymentMethod);
 
                 // Ensure Customer object is attached for PrintService
                 sb.Customer = SelectedCustomer;
@@ -572,6 +588,7 @@ namespace GroceryPOS.ViewModels
             SelectedTab.TaxText = "0"; 
             SelectedTab.CashReceivedText = "0"; 
             PendingCreditAmount = 0; 
+            SelectedPaymentMethod = "Cash";
             ClearCustomer(); 
             RecalculateTotal(); 
             
@@ -619,6 +636,7 @@ namespace GroceryPOS.ViewModels
             SelectedTab.IsHistoryPaymentOpen = false;
             SelectedTab.IsBillDetailOpen = false;
             SelectedTab.PreviewHistoryBill = null;
+            SelectedTab.LoadedHistoryBillId = null;
             PendingCreditAmount = 0; 
             AvailableAddresses.Clear();
             SelectedBillingAddress = null;
@@ -677,24 +695,32 @@ namespace GroceryPOS.ViewModels
         private void LoadBillIntoCart(Bill b)
         {
             if (SelectedTab == null) return;
+            if (SelectedTab.LoadedHistoryBillId == b.BillId)
+            {
+                StatusMessage = "\u2139 This bill is already loaded in the cart.";
+                OnPropertyChanged(nameof(StatusMessage));
+                return;
+            }
             bool cartWasEmpty = SelectedTab.CartItems.Count == 0;
             bool wasCapped = false;
 
             foreach (var it in b.Items)
             {
-                var currentItem = _itemService.GetItemByBarcode(it.ItemId);
-                int stock = (int)(currentItem?.StockQuantity ?? 0);
-                int finalQty = it.Quantity;
+                var currentItem = _itemService.GetItemById(it.ItemInternalId);
+                double stock = currentItem?.StockQuantity ?? 0;
+                double currentPrice = currentItem?.SalePrice ?? it.UnitPrice;
+                double finalQty = it.Quantity;
                 if (finalQty > stock) { finalQty = stock; wasCapped = true; }
-                if (finalQty <= 0 && stock > 0) continue; // Skip if it was 0 in bill but exists now (user can add fresh)
+                if (finalQty <= 0) continue;
 
-                var existing = SelectedTab.CartItems.FirstOrDefault(c => c.ItemId == it.ItemId && c.UnitPrice == it.UnitPrice);
+                // Match strictly by ItemId (barcode) only — never by name or price
+                var existing = SelectedTab.CartItems.FirstOrDefault(c => c.ItemId == it.ItemId);
                 if (existing != null)
                 {
                     existing.AvailableStock = stock;
+                    existing.UnitPrice = currentPrice;
                     existing.Quantity += finalQty;
-                    existing.IsCopied = true; // Mark as copied if any part of it was copied
-                    // Re-cap after addition
+                    existing.IsCopied = true;
                     if (existing.Quantity > stock) { existing.Quantity = stock; wasCapped = true; }
                 }
                 else
@@ -702,16 +728,14 @@ namespace GroceryPOS.ViewModels
                     var newItem = new CartItem 
                     { 
                         ItemId = it.ItemId, 
-                        ItemDescription = it.ItemDescription, 
-                        UnitPrice = it.UnitPrice, 
+                        Barcode = currentItem?.Barcode,
+                        ItemDescription = currentItem?.Description ?? it.ItemDescription, 
+                        UnitPrice = currentPrice, 
                         Quantity = finalQty,
                         AvailableStock = stock,
-                        IsCopied = true // Set copied flag
+                        IsCopied = true
                     };
-                    // PropertyChanged already handled by CollectionChanged in most cases, 
-                    // but the setter for SelectedTab also adds it. 
-                    // To be safe and consistent with AddToCart:
-                    newItem.PropertyChanged += OnCartItemPropertyChanged;
+                    // PropertyChanged is handled by OnCartItemsCollectionChanged — no manual subscription
                     SelectedTab.CartItems.Add(newItem);
                 }
             }
@@ -729,6 +753,7 @@ namespace GroceryPOS.ViewModels
                 OnPropertyChanged(nameof(DiscountText));
                 OnPropertyChanged(nameof(TaxText));
             }
+            SelectedTab.LoadedHistoryBillId = b.BillId;
             RecalculateTotal();
         }
         private void SaveNewCustomer() { try { if (string.IsNullOrWhiteSpace(NewCustomerName) || string.IsNullOrWhiteSpace(NewCustomerPhone)) { RegistrationErrorMessage = "Name and Phone are required."; OnPropertyChanged(nameof(RegistrationErrorMessage)); return; } 
@@ -868,6 +893,19 @@ namespace GroceryPOS.ViewModels
 
                 var updatedBill = _creditService.RecordPayment(SelectedTab.PreviewHistoryBill.BillId, amount, HistoryPaymentNote);
                 
+                // Attach customer info for receipt printing
+                updatedBill.Customer = SelectedCustomer;
+
+                // Print payment receipt
+                try
+                {
+                    _printService.PrintPaymentReceipt(updatedBill, amount, _authService.CurrentUser?.FullName ?? "Cashier");
+                }
+                catch (Exception pex)
+                {
+                    AppLogger.Error("Payment receipt print failed", pex);
+                }
+
                 // Update preview bill with new remaining
                 SelectedTab.PreviewHistoryBill = updatedBill;
                 OnPropertyChanged(nameof(PreviewHistoryBill));

@@ -2,13 +2,22 @@ namespace GroceryPOS.Models
 {
     /// <summary>
     /// Represents a product/item in the inventory.
-    /// Primary key is the barcode (TEXT), not an auto-increment integer.
-    /// Maps to the "Item" table in SQLite.
+    /// Maps to the "Items" table in the normalized 3NF schema.
     /// </summary>
     public class Item
     {
-        /// <summary>Barcode — serves as the primary key (TEXT).</summary>
-        public string ItemId { get; set; } = string.Empty;
+        /// <summary>Database Internal ID (Primary Key).</summary>
+        public int Id { get; set; }
+
+        /// <summary>Product Barcode (optional, unique if provided).</summary>
+        public string? Barcode { get; set; }
+
+        /// <summary>String representation of the database Id – used as the canonical product identifier.</summary>
+        public string ItemId
+        {
+            get => Id.ToString();
+            set { if (int.TryParse(value, out var v)) Id = v; }
+        }
 
         /// <summary>Product description / name.</summary>
         public string Description { get; set; } = string.Empty;
@@ -19,10 +28,16 @@ namespace GroceryPOS.Models
         /// <summary>Sale price (selling price to customer).</summary>
         public double SalePrice { get; set; }
 
-        /// <summary>Category name (free text, e.g. "Dairy", "Beverages").</summary>
-        public string? ItemCategory { get; set; }
+        /// <summary>Foreign Key linking to Categories table.</summary>
+        public int? CategoryId { get; set; }
 
-        /// <summary>Current stock quantity available.</summary>
+        /// <summary>Joined Category Name from Categories table.</summary>
+        public string? CategoryName { get; set; }
+
+        /// <summary>Compatibility shim for old code.</summary>
+        public string? ItemCategory { get => CategoryName; set => CategoryName = value; }
+
+        /// <summary>Current stock quantity available (calculated from InventoryLogs).</summary>
         public double StockQuantity { get; set; }
 
         /// <summary>Minimum stock level before alerting.</summary>

@@ -33,7 +33,7 @@ namespace GroceryPOS.ViewModels
             set { if (SetProperty(ref _searchQuery, value)) ApplyFilters(); }
         }
 
-        public List<string> AvailableBillFilters { get; } = new() { "All Bills", "Normal Bills", "Credit Bills", "Return Bills" };
+        public List<string> AvailableBillFilters { get; } = new() { "All Bills", "Normal Bills", "Credit Bills" };
 
         private string _selectedBillFilter = "All Bills";
         public string SelectedBillFilter
@@ -323,8 +323,6 @@ namespace GroceryPOS.ViewModels
                 filtered = filtered.Where(b => b.Type == "Sale" && b.RemainingAmount <= 0);
             else if (SelectedBillFilter == "Credit Bills")
                 filtered = filtered.Where(b => b.Type == "Sale" && b.RemainingAmount > 0);
-            else if (SelectedBillFilter == "Return Bills")
-                filtered = filtered.Where(b => b.Type == "Return");
             // "All Bills" implies no filtering
 
             // 2. Filter by Search Query (Invoice Number or Customer Name)

@@ -147,10 +147,10 @@
         <Border Grid.Row="4" Style="{DynamicResource CardBorder}" Padding="0" Margin="0,0,0,10"
                 Visibility="{Binding ReturnHistory.Count, Converter={StaticResource CountToVisibilityConverter}}">
             <DataGrid ItemsSource="{Binding ReturnHistory}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
-                      Style="{DynamicResource ModernDataGrid}" MaxHeight="150"
+                      Style="{DynamicResource ModernDataGrid}" MaxHeight="250"
                       ColumnHeaderStyle="{DynamicResource ModernDataGridColumnHeader}" RowStyle="{DynamicResource ModernDataGridRow}" CellStyle="{DynamicResource ModernDataGridCell}">
                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="Return ID" Binding="{Binding ReturnBillId}" Width="120">
+                    <DataGridTextColumn Header="Return #" Binding="{Binding ReturnBillId}" Width="90">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="FontWeight" Value="Bold"/>
@@ -158,23 +158,33 @@
                             </Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="Date/Time" Binding="{Binding ReturnDate}" Width="150"/>
-                    <DataGridTextColumn Header="Barcode" Binding="{Binding ProductId}" Width="120"/>
-                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="60">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="HorizontalAlignment" Value="Center"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-                    <DataGridTemplateColumn Header="Product Description" Width="*">
+                    <DataGridTextColumn Header="Date/Time" Binding="{Binding ReturnedAt, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="165"/>
+                    <DataGridTemplateColumn Header="Product" Width="*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding ProductDescription}" TextWrapping="Wrap" Padding="4,2"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Barcode" Binding="{Binding ProductId}" Width="120"/>
+                    <DataGridTextColumn Header="Qty" Binding="{Binding ReturnQuantity}" Width="55">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Center"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, StringFormat='{}{0:N2}'}" Width="90">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Right"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
@@ -363,6 +373,21 @@
                 </StackPanel>
             </ScrollViewer>
         </DockPanel>
+    </Border>
+
+    <!-- ═══ POPUP ERROR OVERLAY ═══ -->
+    <Border Grid.ColumnSpan="2" Panel.ZIndex="3000" IsHitTestVisible="False"
+            VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,40,0,0"
+            Visibility="{Binding PopupErrorVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+        <Border Background="White" CornerRadius="8" Padding="20,12"
+                BorderBrush="#EF4444" BorderThickness="2">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.15" Color="Black"/>
+            </Border.Effect>
+            <TextBlock Text="{Binding PopupErrorMessage}" 
+                       Foreground="#EF4444" FontSize="20" FontWeight="Bold" 
+                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        </Border>
     </Border>
 </Grid>
 </UserControl>

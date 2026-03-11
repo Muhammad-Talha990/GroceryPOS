@@ -162,6 +162,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("ClearForm failed", ex);
                 StatusMessage = $"✗ Error clearing form: {ex.Message}";
+                ShowPopupError($"Error clearing form: {ex.Message}");
             }
         }
 
@@ -211,6 +212,7 @@ namespace GroceryPOS.ViewModels
             {
                 var errorMsg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
                 StatusMessage = $"✗ Error: {errorMsg}";
+                ShowPopupError(errorMsg);
                 AppLogger.Error("Add item failed", ex);
             }
         }
@@ -219,7 +221,7 @@ namespace GroceryPOS.ViewModels
         {
             try
             {
-                if (SelectedProduct == null) { StatusMessage = "Please select an item to update."; return; }
+                if (SelectedProduct == null) { StatusMessage = "Please select an item to update."; ShowPopupError("Please select an item to update."); return; }
                 if (!ValidateForm()) return;
 
                 var newBarcode = string.IsNullOrWhiteSpace(FormBarcode) ? null : FormBarcode.Trim();
@@ -247,13 +249,14 @@ namespace GroceryPOS.ViewModels
             {
                 var errorMsg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
                 StatusMessage = $"✗ Error: {errorMsg}";
+                ShowPopupError(errorMsg);
                 AppLogger.Error("Update item failed", ex);
             }
         }
 
         private void DeleteProduct()
         {
-            if (SelectedProduct == null) { StatusMessage = "Please select an item to delete."; return; }
+            if (SelectedProduct == null) { StatusMessage = "Please select an item to delete."; ShowPopupError("Please select an item to delete."); return; }
 
             // Capture item details BEFORE deletion, because UI might null SelectedProduct when collection changes
             int itemId = SelectedProduct.Id;
@@ -278,10 +281,12 @@ namespace GroceryPOS.ViewModels
                     if (errorMsg.Contains("FOREIGN KEY constraint failed") || errorMsg.Contains("REFERENCE constraint"))
                     {
                         StatusMessage = "✗ Cannot delete: This item is linked to existing bill records.";
+                        ShowPopupError("Cannot delete: This item is linked to existing bill records.");
                     }
                     else
                     {
                         StatusMessage = $"✗ Error deleting item: {errorMsg}";
+                        ShowPopupError($"Error deleting item: {errorMsg}");
                     }
                     AppLogger.Error("Delete item failed", ex);
                 }
@@ -291,16 +296,16 @@ namespace GroceryPOS.ViewModels
         private bool ValidateForm()
         {
             if (string.IsNullOrWhiteSpace(FormName))
-            { StatusMessage = "Item description is required."; return false; }
+            { StatusMessage = "Item description is required."; ShowPopupError("Item description is required."); return false; }
             if (!double.TryParse(FormCostPrice, out var cost) || cost < 0)
-            { StatusMessage = "Invalid cost price."; return false; }
+            { StatusMessage = "Invalid cost price."; ShowPopupError("Invalid cost price."); return false; }
             if (!double.TryParse(FormSalePrice, out var sale) || sale < 0)
-            { StatusMessage = "Invalid sale price."; return false; }
+            { StatusMessage = "Invalid sale price."; ShowPopupError("Invalid sale price."); return false; }
             // Note: FormStockQuantity is read-only in UI, so validation is less critical but kept for format check
             if (!double.TryParse(FormStockQuantity, out _))
-            { StatusMessage = "Invalid stock quantity format."; return false; }
+            { StatusMessage = "Invalid stock quantity format."; ShowPopupError("Invalid stock quantity format."); return false; }
             if (!double.TryParse(FormMinStockThreshold, out var threshold) || threshold < 0)
-            { StatusMessage = "Invalid threshold."; return false; }
+            { StatusMessage = "Invalid threshold."; ShowPopupError("Invalid threshold."); return false; }
 
             // Cost Price > Sale Price Validation
             if (cost > sale)
@@ -311,6 +316,7 @@ namespace GroceryPOS.ViewModels
                 if (result == MessageBoxResult.No)
                 {
                     StatusMessage = "✗ Operation cancelled due to price discrepancy.";
+                    ShowPopupError("Operation cancelled due to price discrepancy.");
                     return false;
                 }
             }

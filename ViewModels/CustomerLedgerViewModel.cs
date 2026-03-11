@@ -209,6 +209,7 @@ namespace GroceryPOS.ViewModels
                 if (Customer == null)
                 {
                     StatusMessage = "Customer not found.";
+                    ShowPopupError("Customer not found.");
                     return;
                 }
                 LoadLedger();
@@ -217,6 +218,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("CustomerLedgerViewModel.Load failed", ex);
                 StatusMessage = "⚠ Failed to load ledger.";
+                ShowPopupError("Failed to load ledger.");
             }
         }
 
@@ -244,6 +246,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("CustomerLedgerViewModel.LoadLedger failed", ex);
                 StatusMessage = "⚠ Failed to refresh ledger.";
+                ShowPopupError("Failed to refresh ledger.");
             }
         }
 
@@ -261,6 +264,13 @@ namespace GroceryPOS.ViewModels
         private void OpenPaymentPanel(Bill? bill)
         {
             if (bill == null || !bill.HasPendingCredit) return;
+            // Re-fetch from DB to get latest PaidAmount/RemainingAmount
+            var fresh = _creditService.GetBillById(bill.BillId);
+            if (fresh != null)
+            {
+                fresh.Customer = Customer;
+                bill = fresh;
+            }
             SelectedBill       = bill;
             PaymentAmountText  = string.Empty;
             PaymentNote        = string.Empty;
@@ -302,8 +312,20 @@ namespace GroceryPOS.ViewModels
 
                 // Capture details before the service call, as it triggers a refresh that nulls SelectedBill
                 string invoiceNumber = SelectedBill.InvoiceNumber;
+                int billId = SelectedBill.BillId;
 
-                _creditService.RecordPayment(SelectedBill.BillId, amount, PaymentNote);
+                var updatedBill = _creditService.RecordPayment(SelectedBill.BillId, amount, PaymentNote);
+
+                // Print payment receipt (same as billing section "pay due")
+                try
+                {
+                    updatedBill.Customer = Customer;
+                    _printService.PrintPaymentReceipt(updatedBill, amount, _authService.CurrentUser?.FullName ?? "Cashier");
+                }
+                catch (Exception pex)
+                {
+                    AppLogger.Error("Payment receipt print failed (Ledger)", pex);
+                }
 
                 StatusMessage = $"✓ Payment of Rs. {amount:N2} recorded successfully for Bill #{invoiceNumber}.";
                 MessageBox.Show(StatusMessage, "Payment Recorded", MessageBoxButton.OK, MessageBoxImage.Information);

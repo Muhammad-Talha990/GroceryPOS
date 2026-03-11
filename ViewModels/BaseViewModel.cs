@@ -1,6 +1,8 @@
 using System;
 using System.ComponentModel;
+using System.Media;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace GroceryPOS.ViewModels
@@ -22,9 +24,24 @@ namespace GroceryPOS.ViewModels
             return true;
         }
 
+        // ── Popup Error ──
+        private string _popupErrorMessage = "";
+        public string PopupErrorMessage { get => _popupErrorMessage; set => SetProperty(ref _popupErrorMessage, value); }
+
+        private bool _popupErrorVisible;
+        public bool PopupErrorVisible { get => _popupErrorVisible; set => SetProperty(ref _popupErrorVisible, value); }
+
+        protected async void ShowPopupError(string message)
+        {
+            PopupErrorMessage = message;
+            PopupErrorVisible = true;
+            SystemSounds.Hand.Play();
+            await Task.Delay(2500);
+            PopupErrorVisible = false;
+        }
+
         /// <summary>
         /// Safely executes an action on the UI (Dispatcher) thread.
-        /// Useful for updating collections from background tasks.
         /// </summary>
         protected void Dispatch(Action action)
         {

@@ -98,9 +98,7 @@ namespace GroceryPOS.ViewModels
             get
             {
                 if (OriginalBill == null) return 0;
-                double previousReturnsTotal = ReturnHistory.Sum(r => (double)r.ReturnQuantity * (OriginalBill.Items.FirstOrDefault(bi => bi.ItemId == r.ProductId)?.UnitPrice ?? 0));
-                // Note: result.Returns in SearchBill would be more accurate if we kept the raw Bill objects,
-                // but ReturnHistory is already populated from them.
+                double previousReturnsTotal = ReturnHistory.Sum(r => r.ReturnQuantity * r.UnitPrice);
                 return OriginalBill.GrandTotal - previousReturnsTotal - (double)CurrentReturnGrandTotal;
             }
         }
@@ -135,6 +133,7 @@ namespace GroceryPOS.ViewModels
             if (!int.TryParse(BillIdInput, out int billId))
             {
                 StatusMessage = "Please enter a valid Bill ID.";
+                ShowPopupError("Please enter a valid Bill ID.");
                 return;
             }
 
@@ -143,6 +142,9 @@ namespace GroceryPOS.ViewModels
                 StatusMessage = "Searching...";
                 var result = await _returnService.GetBillWithReturnHistory(billId);
                 OriginalBill = result.Original;
+
+                // Load return history from database (item-level records)
+                var history = await _returnService.GetReturnHistory(OriginalBill.BillId);
 
                 Dispatch(() =>
                 {
@@ -164,24 +166,18 @@ namespace GroceryPOS.ViewModels
                         Items.Add(vm);
                     }
 
-                    // Load Return History with Sequential Numbering
                     ReturnHistory.Clear();
-                    int seqIdx = 1;
-                    foreach (var retBill in result.Returns.OrderBy(r => r.BillDateTime))
+                    int lastReturnId = -1;
+                    int seqIdx = 0;
+                    foreach (var entry in history.OrderBy(r => r.ReturnedAt))
                     {
-                        foreach (var retItem in retBill.Items)
+                        if (entry.Id != lastReturnId)
                         {
-                            ReturnHistory.Add(new BillReturn
-                            {
-                                ReturnBillId = $"Return {seqIdx}", // Simplified label for step-wise display
-                                ProductId = retItem.ItemId,
-                                ReturnQuantity = (int)Math.Abs(retItem.Quantity),
-                                ReturnDate = retBill.BillDateTime.ToString("dd-MMM-yyyy HH:mm"),
-                                ProductDescription = retItem.ItemDescription,
-                                Id = seqIdx // abusing Id as sequence index for the preview list label
-                            });
+                            seqIdx++;
+                            lastReturnId = entry.Id;
                         }
-                        seqIdx++;
+                        entry.ReturnBillId = $"Return {seqIdx}";
+                        ReturnHistory.Add(entry);
                     }
                     RefreshPreview();
                 });
@@ -191,6 +187,7 @@ namespace GroceryPOS.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Error: {ex.Message}";
+                ShowPopupError(ex.Message);
                 AppLogger.Error("SearchBill failed", ex);
             }
         }
@@ -210,6 +207,7 @@ namespace GroceryPOS.ViewModels
             if (!itemsToReturn.Any())
             {
                 StatusMessage = "No items selected for return.";
+                ShowPopupError("No items selected for return.");
                 return;
             }
 
@@ -258,10 +256,12 @@ namespace GroceryPOS.ViewModels
             catch (BusinessException ex)
             {
                 StatusMessage = $"Business Rule: {ex.Message}";
+                ShowPopupError(ex.Message);
             }
             catch (Exception ex)
             {
                 StatusMessage = $"An error occurred: {ex.Message}";
+                ShowPopupError(ex.Message);
                 AppLogger.Error("ProcessReturn failed", ex);
             }
         }

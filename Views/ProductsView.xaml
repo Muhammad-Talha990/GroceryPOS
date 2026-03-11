@@ -212,5 +212,20 @@
                 </ScrollViewer>
             </Border>
         </Grid>
+
+        <!-- ═══ POPUP ERROR OVERLAY ═══ -->
+        <Border Grid.RowSpan="2" Panel.ZIndex="3000" IsHitTestVisible="False"
+                VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,40,0,0"
+                Visibility="{Binding PopupErrorVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+            <Border Background="White" CornerRadius="8" Padding="20,12"
+                    BorderBrush="#EF4444" BorderThickness="2">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.15" Color="Black"/>
+                </Border.Effect>
+                <TextBlock Text="{Binding PopupErrorMessage}" 
+                           Foreground="#EF4444" FontSize="20" FontWeight="Bold" 
+                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Border>
+        </Border>
     </Grid>
 </UserControl>

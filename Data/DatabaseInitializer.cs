@@ -29,7 +29,7 @@ namespace GroceryPOS.Data
     public static class DatabaseInitializer
     {
         // Schema version — increment when adding migrations
-        private const int CurrentSchemaVersion = 4;
+        private const int CurrentSchemaVersion = 6;
 
         /// <summary>
         /// Ensures all tables, indexes, and seed data exist.
@@ -124,6 +124,7 @@ namespace GroceryPOS.Data
                             DiscountAmount REAL    DEFAULT 0,
                             Status         TEXT    DEFAULT 'Completed'
                                            CHECK(Status IN ('Completed', 'Cancelled')),
+                            BillPaymentMethod TEXT NOT NULL DEFAULT 'Cash',
                             IsPrinted      INTEGER DEFAULT 0,
                             PrintedAt      DATETIME,
                             PrintAttempts  INTEGER DEFAULT 0,
@@ -167,9 +168,9 @@ namespace GroceryPOS.Data
                             BillId          INTEGER NOT NULL,
                             Amount          REAL    NOT NULL,
                             PaymentMethod   TEXT    NOT NULL DEFAULT 'Cash'
-                                            CHECK(PaymentMethod IN ('Cash', 'Card', 'Credit')),
+                                            CHECK(PaymentMethod IN ('Cash', 'Card', 'Credit', 'Online')),
                             TransactionType TEXT    NOT NULL DEFAULT 'Sale'
-                                            CHECK(TransactionType IN ('Sale', 'Credit Payment', 'Refund')),
+                                            CHECK(TransactionType IN ('Sale', 'Credit Payment', 'Refund', 'Return Offset')),
                             Note            TEXT,
                             PaidAt          DATETIME DEFAULT CURRENT_TIMESTAMP,
                             FOREIGN KEY (BillId) REFERENCES Bills(BillId)
@@ -502,6 +503,75 @@ namespace GroceryPOS.Data
                 AddColumnIfNotExists(conn, "InventoryLogs", "ImagePath", "TEXT");
                 SetSchemaVersion(conn, 4);
                 AppLogger.Info("Migration v4: Added ImagePath to InventoryLogs.");
+            }
+
+            // Migration v4 → v5: Add 'Return Offset' to Payments.TransactionType CHECK constraint
+            if (currentVersion < 5)
+            {
+                Execute(conn, @"
+                    CREATE TABLE IF NOT EXISTS Payments_new (
+                        PaymentId       INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BillId          INTEGER NOT NULL,
+                        Amount          REAL    NOT NULL,
+                        PaymentMethod   TEXT    NOT NULL DEFAULT 'Cash'
+                                        CHECK(PaymentMethod IN ('Cash', 'Card', 'Credit', 'Online')),
+                        TransactionType TEXT    NOT NULL DEFAULT 'Sale'
+                                        CHECK(TransactionType IN ('Sale', 'Credit Payment', 'Refund', 'Return Offset')),
+                        Note            TEXT,
+                        PaidAt          DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (BillId) REFERENCES Bills(BillId)
+                            ON DELETE CASCADE
+                    );
+                    INSERT INTO Payments_new SELECT * FROM Payments;
+                    DROP TABLE Payments;
+                    ALTER TABLE Payments_new RENAME TO Payments;
+                ");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Payments_BillId ON Payments(BillId);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Payments_PaidAt ON Payments(PaidAt);");
+                // Reclassify any existing return-offset payments that were saved as 'Credit Payment'
+                Execute(conn, @"
+                    UPDATE Payments SET TransactionType = 'Return Offset'
+                    WHERE TransactionType = 'Credit Payment'
+                      AND BillId IN (SELECT DISTINCT BillId FROM BillReturns);
+                ");
+                SetSchemaVersion(conn, 5);
+                AppLogger.Info("Migration v5: Added 'Return Offset' to Payments.TransactionType.");
+            }
+
+            // Migration v5 → v6: Add BillPaymentMethod column to Bills + 'Online' to Payments.PaymentMethod
+            if (currentVersion < 6)
+            {
+                AddColumnIfNotExists(conn, "Bills", "BillPaymentMethod", "TEXT NOT NULL DEFAULT 'Cash'");
+                // Backfill BillPaymentMethod from the first Payment record for each bill
+                Execute(conn, @"
+                    UPDATE Bills SET BillPaymentMethod = COALESCE(
+                        (SELECT p.PaymentMethod FROM Payments p 
+                         WHERE p.BillId = Bills.BillId AND p.TransactionType = 'Sale'
+                         ORDER BY p.PaidAt ASC LIMIT 1), 'Cash');
+                ");
+                // Recreate Payments table to add 'Online' to PaymentMethod CHECK
+                Execute(conn, @"
+                    CREATE TABLE IF NOT EXISTS Payments_v6 (
+                        PaymentId       INTEGER PRIMARY KEY AUTOINCREMENT,
+                        BillId          INTEGER NOT NULL,
+                        Amount          REAL    NOT NULL,
+                        PaymentMethod   TEXT    NOT NULL DEFAULT 'Cash'
+                                        CHECK(PaymentMethod IN ('Cash', 'Card', 'Credit', 'Online')),
+                        TransactionType TEXT    NOT NULL DEFAULT 'Sale'
+                                        CHECK(TransactionType IN ('Sale', 'Credit Payment', 'Refund', 'Return Offset')),
+                        Note            TEXT,
+                        PaidAt          DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (BillId) REFERENCES Bills(BillId)
+                            ON DELETE CASCADE
+                    );
+                    INSERT INTO Payments_v6 SELECT * FROM Payments;
+                    DROP TABLE Payments;
+                    ALTER TABLE Payments_v6 RENAME TO Payments;
+                ");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Payments_BillId ON Payments(BillId);");
+                Execute(conn, "CREATE INDEX IF NOT EXISTS IX_Payments_PaidAt ON Payments(PaidAt);");
+                SetSchemaVersion(conn, 6);
+                AppLogger.Info("Migration v6: Added BillPaymentMethod to Bills, 'Online' to Payments.PaymentMethod.");
             }
 
             AppLogger.Info($"Database migrated successfully to v{CurrentSchemaVersion}.");

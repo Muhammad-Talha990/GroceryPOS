@@ -47,6 +47,12 @@ namespace GroceryPOS.ViewModels
         private double _todayCashInHand;
         public double TodayCashInHand { get => _todayCashInHand; set => SetProperty(ref _todayCashInHand, value); }
 
+        private double _todayCashInDrawer;
+        public double TodayCashInDrawer { get => _todayCashInDrawer; set => SetProperty(ref _todayCashInDrawer, value); }
+
+        private double _todayOnlinePayments;
+        public double TodayOnlinePayments { get => _todayOnlinePayments; set => SetProperty(ref _todayOnlinePayments, value); }
+
         private int _totalProducts;
         public int TotalProducts { get => _totalProducts; set => SetProperty(ref _totalProducts, value); }
 
@@ -61,6 +67,9 @@ namespace GroceryPOS.ViewModels
 
         public ICommand RefreshCommand { get; }
 
+        private readonly System.Windows.Threading.DispatcherTimer _clockTimer;
+        public string CurrentTime => DateTime.Now.ToString("hh:mm:ss tt");
+
         public DashboardViewModel(AuthService authService, ItemService itemService, BillService billService, IStockService stockService)
         {
             _itemService = itemService;
@@ -72,6 +81,11 @@ namespace GroceryPOS.ViewModels
             Greeting = $"{timeGreeting}, {authService.CurrentUser?.FullName ?? "User"}!";
 
             RefreshCommand = new RelayCommand(LoadData);
+
+            // Live clock
+            _clockTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _clockTimer.Tick += (s, e) => OnPropertyChanged(nameof(CurrentTime));
+            _clockTimer.Start();
 
             // Real-time updates
             _stockService.StockChanged += LoadData;
@@ -88,6 +102,9 @@ namespace GroceryPOS.ViewModels
             TodayRecoveredCredit = _billService.GetTodayRecoveredCredit();
             TodayCashRefunds = _billService.GetTodayCashRefunded();
             TodayCashInHand = TodaySalesCash + TodayRecoveredCredit - TodayCashRefunds;
+
+            TodayCashInDrawer = _billService.GetTodayCashInDrawer();
+            TodayOnlinePayments = _billService.GetTodayOnlinePayments();
 
             TodayReturns = _billService.GetTodayReturnsTotal();
             TodayCash = TodaySalesCash + TodayRecoveredCredit; // This used to be total cash received, keeping it for backward compat if needed, but UI will use TodayCashInHand
@@ -107,6 +124,7 @@ namespace GroceryPOS.ViewModels
         }
         public override void Dispose()
         {
+            _clockTimer.Stop();
             if (_stockService != null)
                 _stockService.StockChanged -= LoadData;
             base.Dispose();

@@ -177,9 +177,6 @@
 
                 <!-- Legend -->
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="16,10" HorizontalAlignment="Right">
-                    <Border Background="#FEE2E2" Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0" BorderBrush="#FECACA" BorderThickness="1"/>
-                    <TextBlock Text="Return" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,16,0" VerticalAlignment="Center"/>
-                    
                     <Border Background="#FEF9C3" Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0" BorderBrush="#FEF08A" BorderThickness="1"/>
                     <TextBlock Text="Credit Sale" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,16,0" VerticalAlignment="Center"/>
                     
@@ -194,10 +191,6 @@
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow" BasedOn="{StaticResource ModernDataGridRow}">
                         <Style.Triggers>
-                            <!-- Return Report: Light Red -->
-                            <DataTrigger Binding="{Binding IsReturn}" Value="True">
-                                <Setter Property="Background" Value="#FEE2E2"/>
-                            </DataTrigger>
                             <!-- Credit Report: Light Yellow -->
                             <DataTrigger Binding="{Binding HasPendingCredit}" Value="True">
                                 <Setter Property="Background" Value="#FEF9C3"/>

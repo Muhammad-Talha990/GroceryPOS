@@ -32,6 +32,9 @@ namespace GroceryPOS.Models
         /// <summary>Quantity being returned (total for this transaction).</summary>
         public int ReturnQuantity { get; set; }
 
+        /// <summary>Unit price of the returned item.</summary>
+        public double UnitPrice { get; set; }
+
         /// <summary>Item description, helpful for UI.</summary>
         public string? ProductDescription { get; set; }
     }

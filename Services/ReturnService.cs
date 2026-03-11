@@ -131,7 +131,7 @@ namespace GroceryPOS.Services
                         cmd.Transaction = txn;
                         cmd.CommandText = @"
                             INSERT INTO Payments (BillId, Amount, PaymentMethod, TransactionType)
-                            VALUES (@bid, @amt, 'Cash', 'Credit Payment');";
+                            VALUES (@bid, @amt, 'Cash', 'Return Offset');";
                         cmd.Parameters.AddWithValue("@bid", originalBillId);
                         cmd.Parameters.AddWithValue("@amt", creditToReduce);
                         cmd.ExecuteNonQuery();

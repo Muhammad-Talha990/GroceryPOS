@@ -393,5 +393,27 @@ namespace GroceryPOS.Helpers
                 }
             }
         }
+        // --- FocusTrigger Attached Property ---
+        public static readonly DependencyProperty FocusTriggerProperty =
+            DependencyProperty.RegisterAttached(
+                "FocusTrigger",
+                typeof(bool),
+                typeof(FocusHelper),
+                new PropertyMetadata(false, OnFocusTriggerChanged));
+
+        public static bool GetFocusTrigger(DependencyObject obj) => (bool)obj.GetValue(FocusTriggerProperty);
+        public static void SetFocusTrigger(DependencyObject obj, bool value) => obj.SetValue(FocusTriggerProperty, value);
+
+        private static void OnFocusTriggerChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is UIElement element && (bool)e.NewValue)
+            {
+                element.Dispatcher.BeginInvoke(new System.Action(() =>
+                {
+                    element.Focus();
+                    Keyboard.Focus(element);
+                }));
+            }
+        }
     }
 }

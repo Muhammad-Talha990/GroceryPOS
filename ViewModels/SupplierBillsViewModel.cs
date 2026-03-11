@@ -249,6 +249,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("Failed to load all supplies", ex);
                 StatusMessage = "Error loading stock.";
+                ShowPopupError("Error loading stock.");
             }
         }
 
@@ -330,12 +331,14 @@ namespace GroceryPOS.ViewModels
                     FoundItem = null;
                     SupplyHistory.Clear();
                     StatusMessage = "Item not found.";
+                    ShowPopupError("Item not found.");
                 }
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Search failed", ex);
                 StatusMessage = "Search error.";
+                ShowPopupError("Search error.");
             }
         }
 
@@ -386,6 +389,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("Failed to load supply for update", ex);
                 StatusMessage = "Error loading update form.";
+                ShowPopupError("Error loading update form.");
             }
         }
 
@@ -445,12 +449,14 @@ namespace GroceryPOS.ViewModels
                 {
                     IsSearchResultsOpen = false;
                     StatusMessage = "No matching items found.";
+                    ShowPopupError("No matching items found.");
                 }
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Manual search failed", ex);
                 StatusMessage = "Error finding item.";
+                ShowPopupError("Error finding item.");
             }
         }
 
@@ -540,6 +546,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("Failed to load stock history", ex);
                 StatusMessage = "Error loading history.";
+                ShowPopupError("Error loading history.");
             }
         }
 
@@ -614,7 +621,7 @@ namespace GroceryPOS.ViewModels
             catch (Exception ex)
             {
                 AppLogger.Error("Failed to save stock", ex);
-                MessageBox.Show("Error registration stock: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowPopupError("Error registering stock: " + ex.Message);
             }
         }
 
@@ -634,13 +641,13 @@ namespace GroceryPOS.ViewModels
                 }
                 else
                 {
-                    MessageBox.Show("Bill image file not found on disk.", "File Missing", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ShowPopupError("Bill image file not found on disk.");
                 }
             }
             catch (Exception ex)
             {
                 AppLogger.Error("Failed to open bill image", ex);
-                MessageBox.Show("Error opening bill image: " + ex.Message);
+                ShowPopupError("Error opening bill image: " + ex.Message);
             }
         }
 
@@ -657,7 +664,7 @@ namespace GroceryPOS.ViewModels
             {
                 BillImagePreview = null;
                 IsImageAvailable = false;
-                if (!string.IsNullOrEmpty(path)) StatusMessage = "Image file missing.";
+                if (!string.IsNullOrEmpty(path)) { StatusMessage = "Image file missing."; ShowPopupError("Image file missing."); }
                 return;
             }
 
@@ -680,6 +687,7 @@ namespace GroceryPOS.ViewModels
                 BillImagePreview = null;
                 IsImageAvailable = false;
                 StatusMessage = "Error loading image preview.";
+                ShowPopupError("Error loading image preview.");
             }
         }
     }

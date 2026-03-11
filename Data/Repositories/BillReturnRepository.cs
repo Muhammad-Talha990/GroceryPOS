@@ -95,6 +95,7 @@ namespace GroceryPOS.Data.Repositories
                     RefundAmount = reader.GetDouble(2),
                     ReturnDate = reader.GetString(3),
                     ReturnQuantity = reader.GetInt32(4),
+                    UnitPrice = reader.GetDouble(5),
                     ProductId = reader.GetString(6),
                     ProductDescription = reader.GetString(7)
                 });

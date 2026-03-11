@@ -29,6 +29,9 @@ namespace GroceryPOS.Services
         //  LEDGER
         // ────────────────────────────────────────────
 
+        /// <summary>Gets a single bill by ID with fresh data from DB.</summary>
+        public Bill? GetBillById(int billId) => _billRepo.GetById(billId);
+
         /// <summary>
         /// Returns the full bill ledger for a customer (Sale bills only, all payment statuses).
         /// </summary>

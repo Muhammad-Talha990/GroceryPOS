@@ -203,13 +203,11 @@ namespace GroceryPOS.Services
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
             // ── Bill & Customer Info ──
-            g.DrawString($"Bill#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Date: {DateTime.Now:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Receipt#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
 
             if (_billToPrint.Customer != null)
             {
-                g.DrawString($"Customer: {_billToPrint.Customer.FullName}", boldFont, Brushes.Black, margin, y); y += 13;
+                g.DrawString($"Customer: {_billToPrint.Customer.FullName}", normalFont, Brushes.Black, margin, y); y += 13;
 
                 string? address = _billToPrint.BillingAddress ?? _billToPrint.Customer.Address;
                 if (!string.IsNullOrEmpty(address))
@@ -222,8 +220,11 @@ namespace GroceryPOS.Services
             }
             else
             {
-                g.DrawString("Customer: Walk-in", boldFont, Brushes.Black, margin, y); y += 13;
+                g.DrawString("Customer: Walk-in", normalFont, Brushes.Black, margin, y); y += 13;
             }
+
+            g.DrawString($"Date: {DateTime.Now:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
 
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
@@ -339,16 +340,13 @@ namespace GroceryPOS.Services
 
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
-            // ── 2. Bill Info ──
-            g.DrawString($"Bill#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Date: {_currentReturnBill.CreatedAt:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
+            // ── 2. Bill & Customer Info ──
+            g.DrawString($"Receipt#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
 
-            // ── 3. Customer Info ──
             if (_billToPrint.CustomerId.HasValue)
             {
                 string custName = _billToPrint.Customer?.FullName ?? "Customer";
-                g.DrawString($"Customer: {custName}", boldFont, Brushes.Black, margin, y); y += 13;
+                g.DrawString($"Customer: {custName}", normalFont, Brushes.Black, margin, y); y += 13;
 
                 string? address = _currentReturnBill.BillingAddress ?? _billToPrint.BillingAddress
                     ?? _billToPrint.Customer?.Address;
@@ -362,8 +360,11 @@ namespace GroceryPOS.Services
             }
             else
             {
-                g.DrawString("Customer: Walk-in", boldFont, Brushes.Black, margin, y); y += 13;
+                g.DrawString("Customer: Walk-in", normalFont, Brushes.Black, margin, y); y += 13;
             }
+
+            g.DrawString($"Date: {_currentReturnBill.CreatedAt:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
 
             y += 4;
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
@@ -653,7 +654,7 @@ namespace GroceryPOS.Services
             y += 14;
 
             // Bill info
-            g.DrawString($"Receipt#: {_billToPrint.InvoiceNumber}", normalFont, Brushes.Black, margin, y);
+            g.DrawString($"Receipt#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y);
             y += 13;
             if (isReturn && _billToPrint.ReferenceBillId.HasValue)
             {
@@ -665,20 +666,20 @@ namespace GroceryPOS.Services
             if (_billToPrint.CustomerId.HasValue)
             {
                 string custName = _billToPrint.Customer?.FullName ?? "Customer";
-                g.DrawString($"Cust: {custName}", normalFont, Brushes.Black, margin, y);
+                g.DrawString($"Customer: {custName}", normalFont, Brushes.Black, margin, y);
                 y += 13;
 
                 if (!string.IsNullOrEmpty(_billToPrint.BillingAddress))
                 {
                     RectangleF addrRect = new RectangleF(margin, y, pageWidth, 40);
-                    g.DrawString($"Addr: {_billToPrint.BillingAddress}", smallFont, Brushes.Black, addrRect);
-                    SizeF addrSize = g.MeasureString($"Addr: {_billToPrint.BillingAddress}", smallFont, (int)pageWidth);
+                    g.DrawString($"Address: {_billToPrint.BillingAddress}", smallFont, Brushes.Black, addrRect);
+                    SizeF addrSize = g.MeasureString($"Address: {_billToPrint.BillingAddress}", smallFont, (int)pageWidth);
                     y += Math.Max(13, addrSize.Height + 2);
                 }
             }
             else
             {
-                g.DrawString("Cust: Walk-in", normalFont, Brushes.Black, margin, y);
+                g.DrawString("Customer: Walk-in", normalFont, Brushes.Black, margin, y);
                 y += 13;
             }
 
@@ -929,29 +930,29 @@ namespace GroceryPOS.Services
 
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;
 
-            // ── 2. Return Bill Info ──────────────────────────────────────────
-            g.DrawString($"Bill#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Date: {_currentReturnBill.BillDateTime:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
-            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
+            // ── 2. Bill & Customer Info ──────────────────────────────────────────
+            g.DrawString($"Receipt#: {_billToPrint.InvoiceNumber}", boldFont, Brushes.Black, margin, y); y += 13;
 
-            // ── 3. Customer Info ───────────────────────────
             if (_billToPrint.CustomerId.HasValue)
             {
                 string custName = _billToPrint.Customer?.FullName ?? "Customer";
-                g.DrawString($"Customer: {custName}", boldFont, Brushes.Black, margin, y); y += 13;
+                g.DrawString($"Customer: {custName}", normalFont, Brushes.Black, margin, y); y += 13;
 
                 if (!string.IsNullOrEmpty(_billToPrint.BillingAddress))
                 {
                     RectangleF addrRect = new RectangleF(margin, y, pageWidth, 40);
-                    g.DrawString($"Address:  {_billToPrint.BillingAddress}", smallFont, Brushes.Black, addrRect);
-                    SizeF addrSize = g.MeasureString($"Address:  {_billToPrint.BillingAddress}", smallFont, (int)pageWidth);
+                    g.DrawString($"Address: {_billToPrint.BillingAddress}", smallFont, Brushes.Black, addrRect);
+                    SizeF addrSize = g.MeasureString($"Address: {_billToPrint.BillingAddress}", smallFont, (int)pageWidth);
                     y += Math.Max(13, addrSize.Height + 2);
                 }
             }
             else
             {
-                g.DrawString("Customer: Walk-in", boldFont, Brushes.Black, margin, y); y += 13;
+                g.DrawString("Customer: Walk-in", normalFont, Brushes.Black, margin, y); y += 13;
             }
+
+            g.DrawString($"Date: {_currentReturnBill.BillDateTime:dd/MM/yyyy hh:mm tt}", normalFont, Brushes.Black, margin, y); y += 13;
+            g.DrawString($"Cashier: {_cashierName}", normalFont, Brushes.Black, margin, y); y += 13;
 
             y += 4;
             g.DrawString(new string('-', 44), normalFont, Brushes.Black, margin, y); y += 14;

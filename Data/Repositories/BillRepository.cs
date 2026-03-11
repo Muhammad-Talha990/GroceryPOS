@@ -54,8 +54,8 @@ namespace GroceryPOS.Data.Repositories
             using var billCmd = conn.CreateCommand();
             billCmd.Transaction = txn;
             billCmd.CommandText = @"
-                INSERT INTO Bills (CustomerId, UserId, TaxAmount, DiscountAmount, Status)
-                VALUES (@cid, @uid, @tax, @disc, @status);
+                INSERT INTO Bills (CustomerId, UserId, TaxAmount, DiscountAmount, Status, BillPaymentMethod)
+                VALUES (@cid, @uid, @tax, @disc, @status, @billPayMethod);
                 SELECT last_insert_rowid();
             ";
             billCmd.Parameters.AddWithValue("@cid", bill.CustomerId.HasValue ? (object)bill.CustomerId.Value : DBNull.Value);
@@ -63,6 +63,7 @@ namespace GroceryPOS.Data.Repositories
             billCmd.Parameters.AddWithValue("@tax", bill.TaxAmount);
             billCmd.Parameters.AddWithValue("@disc", bill.DiscountAmount);
             billCmd.Parameters.AddWithValue("@status", bill.Status ?? "Completed");
+            billCmd.Parameters.AddWithValue("@billPayMethod", bill.PaymentMethod ?? "Cash");
 
             bill.BillId = Convert.ToInt32(billCmd.ExecuteScalar());
 
@@ -245,14 +246,19 @@ namespace GroceryPOS.Data.Repositories
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
-        /// <summary>Gets today's total cash collected (including credit payments).</summary>
+        /// <summary>Gets today's cash collected from today's sale bills only (excludes credit recovery and return offsets).</summary>
         public double GetTodayTotalPaid()
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COALESCE(SUM(Amount), 0) FROM Payments 
-                WHERE PaidAt >= @from AND PaidAt < @to;";
+                SELECT COALESCE(SUM(p.Amount), 0)
+                FROM Payments p
+                JOIN Bills b ON p.BillId = b.BillId
+                WHERE p.PaidAt >= @from AND p.PaidAt < @to
+                  AND b.CreatedAt >= @from AND b.CreatedAt < @to
+                  AND b.Status != 'Cancelled'
+                  AND p.TransactionType != 'Return Offset';";
             cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
@@ -271,7 +277,7 @@ namespace GroceryPOS.Data.Repositories
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
-        /// <summary>Gets today's recovered credit (payments made today for previous bills).</summary>
+        /// <summary>Gets today's recovered credit (genuine payments made today for previous bills, excluding return offsets).</summary>
         public double GetTodayRecoveredCredit()
         {
             using var conn = DatabaseHelper.GetConnection();
@@ -281,16 +287,66 @@ namespace GroceryPOS.Data.Repositories
                 FROM Payments p
                 JOIN Bills b ON p.BillId = b.BillId
                 WHERE p.PaidAt >= @from AND p.PaidAt < @to
-                AND b.CreatedAt < @from;";
+                  AND b.CreatedAt < @from
+                  AND p.TransactionType != 'Return Offset';";
             cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
-        /// <summary>Gets the absolute total value of all return transactions today.</summary>
+        /// <summary>Gets the absolute total value of all return transactions today (cash refunds + credit offsets).</summary>
         public double GetTodayReturnsTotal()
         {
-            return GetTodayCashRefunded();
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(bri.Quantity * bri.UnitPrice), 0)
+                FROM BillReturnItems bri
+                JOIN BillReturns br ON bri.ReturnId = br.ReturnId
+                WHERE br.ReturnedAt >= @from AND br.ReturnedAt < @to;";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets today's net cash in drawer: cash payments received minus cash refunds given for returns.</summary>
+        public double GetTodayCashInDrawer()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT 
+                    COALESCE((SELECT SUM(p.Amount)
+                        FROM Payments p
+                        JOIN Bills b ON p.BillId = b.BillId
+                        WHERE p.PaidAt >= @from AND p.PaidAt < @to
+                          AND b.Status != 'Cancelled'
+                          AND p.TransactionType != 'Return Offset'
+                          AND b.BillPaymentMethod = 'Cash'), 0)
+                    -
+                    COALESCE((SELECT SUM(RefundAmount) FROM BillReturns 
+                        WHERE ReturnedAt >= @from AND ReturnedAt < @to), 0);";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
+        }
+
+        /// <summary>Gets today's payments received for Online bills only (sale payments + credit recovery, excludes return offsets).</summary>
+        public double GetTodayOnlinePayments()
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(p.Amount), 0)
+                FROM Payments p
+                JOIN Bills b ON p.BillId = b.BillId
+                WHERE p.PaidAt >= @from AND p.PaidAt < @to
+                  AND b.Status != 'Cancelled'
+                  AND p.TransactionType != 'Return Offset'
+                  AND b.BillPaymentMethod = 'Online';";
+            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
         /// <summary>Gets total return value for a date range.</summary>
@@ -576,7 +632,9 @@ namespace GroceryPOS.Data.Repositories
                 Status         = reader.GetString(reader.GetOrdinal("Status")),
                 SubTotal       = reader.HasColumn("SubTotal") ? reader.GetDouble(reader.GetOrdinal("SubTotal")) : 0,
                 PaidAmount     = reader.HasColumn("PaidAmount") ? reader.GetDouble(reader.GetOrdinal("PaidAmount")) : 0,
-                PaymentMethod  = reader.HasColumn("PaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("PaymentMethod")) ? reader.GetString(reader.GetOrdinal("PaymentMethod")) : "Cash"
+                PaymentMethod  = reader.HasColumn("BillPaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("BillPaymentMethod"))
+                                 ? reader.GetString(reader.GetOrdinal("BillPaymentMethod"))
+                                 : (reader.HasColumn("PaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("PaymentMethod")) ? reader.GetString(reader.GetOrdinal("PaymentMethod")) : "Cash")
             };
 
             // Mapping Customer navigation

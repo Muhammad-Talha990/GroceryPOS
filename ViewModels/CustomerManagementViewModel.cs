@@ -185,6 +185,7 @@ namespace GroceryPOS.ViewModels
             {
                 AppLogger.Error("CustomerManagementViewModel.LoadCustomers failed", ex);
                 SetStatus("⚠ Failed to load customers.");
+                ShowPopupError("Failed to load customers.");
             }
         }
 
@@ -256,12 +257,14 @@ namespace GroceryPOS.ViewModels
                 if (string.IsNullOrWhiteSpace(fullName))
                 {
                     EditError = "⚠ Customer Name is required.";
+                    ShowPopupError("Customer Name is required.");
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(primaryPhone))
                 {
                     EditError = "⚠ Primary Phone is required.";
+                    ShowPopupError("Primary Phone is required.");
                     return;
                 }
 
@@ -293,6 +296,7 @@ namespace GroceryPOS.ViewModels
             catch (Exception ex)
             {
                 EditError = ex.Message;
+                ShowPopupError(ex.Message);
                 AppLogger.Error("CustomerManagementViewModel.SaveEdit failed", ex);
             }
         }
@@ -322,7 +326,7 @@ namespace GroceryPOS.ViewModels
             catch (Exception ex)
             {
                 AppLogger.Error("CustomerManagementViewModel.DeactivateCustomer failed", ex);
-                MessageBox.Show($"Could not deactivate customer: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowPopupError($"Could not deactivate customer: {ex.Message}");
             }
         }
 
@@ -339,7 +343,7 @@ namespace GroceryPOS.ViewModels
             catch (Exception ex)
             {
                 AppLogger.Error("CustomerManagementViewModel.ReactivateCustomer failed", ex);
-                MessageBox.Show($"Could not reactivate customer: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowPopupError($"Could not reactivate customer: {ex.Message}");
             }
         }
 

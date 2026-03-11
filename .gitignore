@@ -34,6 +34,15 @@ build_errors.txt
 build_output.txt
 build.log
 build2.log
+build_error_cleanup.txt
+build_final_verification.txt
+build_output_2.txt
+build_output_2_utf8.txt
+build_output_utf8.txt
+build_result.txt
+final_build_errors.txt
+full_build_output.txt
+readable_errors.txt
 
 # .NET Specific
 *.dll

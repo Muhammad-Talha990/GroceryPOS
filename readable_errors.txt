@@ -1,2 +1,0 @@
-﻿     3>D:\GroceryPOS-Latest\GroceryPOS-master\ViewModels\BillingViewModel.cs(367,38): error CS0266: Cannot implicitly convert type 'double' to 'int'. An explicit conversion exists (are you missing a cast?) [D:\GroceryPOS-Latest\GroceryPOS-master\GroceryPOS_v33ab4y4_wpftmp.csproj]
-         D:\GroceryPOS-Latest\GroceryPOS-master\ViewModels\BillingViewModel.cs(367,38): error CS0266: Cannot implicitly convert type 'double' to 'int'. An explicit conversion exists (are you missing a cast?) [D:\GroceryPOS-Latest\GroceryPOS-master\GroceryPOS_v33ab4y4_wpftmp.csproj]

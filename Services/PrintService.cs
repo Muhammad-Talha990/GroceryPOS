@@ -19,7 +19,7 @@ namespace GroceryPOS.Services
     public class PrintService
     {
         private Bill? _billToPrint;
-        private List<Bill>? _returnHistoryToPrint;
+        private IEnumerable<Bill>? _returnHistoryToPrint;
         private Bill? _currentReturnBill;
         private double _paymentAmount;
         private string _storeName = "GROCERY MART";
@@ -442,7 +442,7 @@ namespace GroceryPOS.Services
             smallFont.Dispose();
         }
 
-        public bool PrintUnifiedReturnReceipt(Bill originalBill, Bill returnBill, List<Bill> history, string cashierName)
+        public bool PrintUnifiedReturnReceipt(Bill originalBill, Bill returnBill, IEnumerable<Bill> history, string cashierName)
         {
             try
             {
@@ -481,7 +481,7 @@ namespace GroceryPOS.Services
             }
         }
 
-        public void PrintReturnSummary(Bill originalBill, List<Bill> returns, string cashierName)
+        public void PrintReturnSummary(Bill originalBill, IEnumerable<Bill> returns, string cashierName)
         {
             try
             {

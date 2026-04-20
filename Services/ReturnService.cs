@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using GroceryPOS.Data;
@@ -18,6 +19,7 @@ namespace GroceryPOS.Services
         private readonly DataCacheService _cache;
         private readonly IStockService _stockService;
         private readonly CreditPaymentRepository _creditRepo;
+        private readonly CustomerLedgerRepository _ledgerRepo = new();
 
         public ReturnService(
             BillRepository billRepo, 
@@ -125,16 +127,23 @@ namespace GroceryPOS.Services
                     }
 
                     // 3. Record Credit Offset if applicable
-                    if (creditToReduce > 0)
+                    // [REMOVED]: Return offsets are now handled logically via ReturnedAmount in repository calculation
+                    // to keep Payment table purely for financial flow.
+
+                    // 4. Record Ledger Entry (Return clears liability)
+                    if (originalBill.CustomerId.HasValue)
                     {
-                        using var cmd = conn.CreateCommand();
-                        cmd.Transaction = txn;
-                        cmd.CommandText = @"
-                            INSERT INTO Payments (BillId, Amount, PaymentMethod, TransactionType)
-                            VALUES (@bid, @amt, 'Cash', 'Return Offset');";
-                        cmd.Parameters.AddWithValue("@bid", originalBillId);
-                        cmd.Parameters.AddWithValue("@amt", creditToReduce);
-                        cmd.ExecuteNonQuery();
+                        string returnInvoiceNum = returnId.ToString("D5");
+                        _ledgerRepo.AddEntry(new CustomerLedgerEntry
+                        {
+                            CustomerId = originalBill.CustomerId.Value,
+                            Type = "RETURN",
+                            ReferenceId = returnInvoiceNum,
+                            Description = $"Items Returned (Ref: Inv #{originalBill.InvoiceNumber})",
+                            Debit = 0,
+                            Credit = totalReturnValue,
+                            EntryDate = DateTime.Now
+                        }, conn, txn);
                     }
 
                     txn.Commit();
@@ -162,7 +171,7 @@ namespace GroceryPOS.Services
                         Status = creditToReduce > 0 && cashRefund > 0 ? "Mixed"
                                : creditToReduce > 0 ? "CreditOnly"
                                : "CashOnly",
-                        Items = processedItems.Select(pi =>
+                        Items = new ObservableCollection<BillDescription>(processedItems.Select(pi =>
                         {
                             var origItem = originalBill.Items.First(i => i.BillItemId == pi.BillItemId);
                             return new BillDescription
@@ -173,7 +182,7 @@ namespace GroceryPOS.Services
                                 UnitPrice = pi.Price,
                                 TotalPrice = pi.Qty * pi.Price
                             };
-                        }).ToList()
+                        }))
                     };
                     return returnBill;
                 }

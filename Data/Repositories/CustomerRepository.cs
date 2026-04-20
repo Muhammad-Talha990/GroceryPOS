@@ -26,12 +26,14 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                INSERT INTO Customers (FullName, Phone, Address, Address2, Address3, IsActive)
-                VALUES (@fullName, @phone, @address, @address2, @address3, 1);
+                INSERT INTO Customers (FullName, Phone, SecondaryPhone, Address, Address2, Address3, IsActive)
+                VALUES (@fullName, @phone, @secondaryPhone, @address, @address2, @address3, 1);
                 SELECT last_insert_rowid();";
 
             cmd.Parameters.AddWithValue("@fullName", customer.FullName);
-            cmd.Parameters.AddWithValue("@phone",    NormalizePhone(customer.Phone));
+            cmd.Parameters.AddWithValue("@phone",          NormalizePhone(customer.Phone));
+            cmd.Parameters.AddWithValue("@secondaryPhone", (object?)customer.SecondaryPhone ?? DBNull.Value);
+
             cmd.Parameters.AddWithValue("@address",  (object?)customer.Address ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@address2", (object?)customer.Address2 ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@address3", (object?)customer.Address3 ?? DBNull.Value);
@@ -46,15 +48,18 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 UPDATE Customers
-                SET FullName  = @fullName,
-                    Phone     = @phone,
-                    Address   = @address,
-                    Address2  = @address2,
-                    Address3  = @address3
+                SET FullName       = @fullName,
+                    Phone          = @phone,
+                    SecondaryPhone = @secondaryPhone,
+                    Address        = @address,
+                    Address2       = @address2,
+                    Address3       = @address3
                 WHERE CustomerId = @id;";
 
             cmd.Parameters.AddWithValue("@fullName", customer.FullName);
-            cmd.Parameters.AddWithValue("@phone",    NormalizePhone(customer.Phone));
+            cmd.Parameters.AddWithValue("@phone",          NormalizePhone(customer.Phone));
+            cmd.Parameters.AddWithValue("@secondaryPhone", (object?)customer.SecondaryPhone ?? DBNull.Value);
+
             cmd.Parameters.AddWithValue("@address",  (object?)customer.Address ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@address2", (object?)customer.Address2 ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@address3", (object?)customer.Address3 ?? DBNull.Value);
@@ -226,6 +231,7 @@ namespace GroceryPOS.Data.Repositories
                 PendingCredit = reader.GetDouble(reader.GetOrdinal("PendingCredit")),
                 LastVisitDate = reader.IsDBNull(reader.GetOrdinal("LastVisit")) ? null : reader.GetDateTime(reader.GetOrdinal("LastVisit"))
             };
+            if (reader.HasColumn("SecondaryPhone")) customer.SecondaryPhone = reader.IsDBNull(reader.GetOrdinal("SecondaryPhone")) ? null : reader.GetString(reader.GetOrdinal("SecondaryPhone"));
             if (reader.HasColumn("Address2")) customer.Address2 = reader.IsDBNull(reader.GetOrdinal("Address2")) ? null : reader.GetString(reader.GetOrdinal("Address2"));
             if (reader.HasColumn("Address3")) customer.Address3 = reader.IsDBNull(reader.GetOrdinal("Address3")) ? null : reader.GetString(reader.GetOrdinal("Address3"));
             return customer;

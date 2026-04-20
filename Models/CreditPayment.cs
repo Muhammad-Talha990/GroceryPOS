@@ -17,7 +17,24 @@ namespace GroceryPOS.Models
         /// <summary>When this payment was recorded.</summary>
         public DateTime PaidAt { get; set; } = DateTime.Now;
 
+        /// <summary>Payment method used (Cash, Card, Online, etc.)</summary>
+        public string PaymentMethod { get; set; } = "Cash";
+
+        /// <summary>Type of transaction (Sale, Credit Payment, etc.)</summary>
+        public string TransactionType { get; set; } = "Sale";
+
         /// <summary>Optional cashier note for this payment.</summary>
         public string? Note { get; set; }
+
+        public string DisplayNote
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(Note)) return Note;
+                if (TransactionType == "Sale") return "initial payment";
+                if (TransactionType == "Credit Payment") return "adjust credits";
+                return string.Empty;
+            }
+        }
     }
 }

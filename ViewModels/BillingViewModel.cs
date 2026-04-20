@@ -22,6 +22,7 @@ namespace GroceryPOS.ViewModels
         private readonly CustomerService _customerService;
         private readonly CreditService _creditService;
         private readonly BillRepository _billRepo;
+        private readonly AccountService _accountService;
         private readonly System.Windows.Threading.DispatcherTimer _timer;
 
         public ObservableCollection<BillingTab> Tabs { get; set; } = new();
@@ -286,6 +287,40 @@ namespace GroceryPOS.ViewModels
         // ── Payment Method ──
         public List<string> PaymentMethods { get; } = new() { "Cash", "Online" };
 
+        private ObservableCollection<Account> _activeAccounts = new();
+        public ObservableCollection<Account> ActiveAccounts { get => _activeAccounts; set => SetProperty(ref _activeAccounts, value); }
+
+        private Account? _selectedAccount;
+        public Account? SelectedAccount
+        {
+            get => _selectedAccount;
+            set
+            {
+                if (SetProperty(ref _selectedAccount, value))
+                {
+                    OnPropertyChanged(nameof(SelectedAccount));
+                    if (value != null)
+                    {
+                        SelectedOnlineMethod = value.DisplayName;
+                    }
+                }
+            }
+        }
+
+        public List<string> OnlinePaymentMethods { get; } = new() { "Easypaisa", "JazzCash", "Bank Transfer" };
+
+        private string? _selectedOnlineMethod;
+        /// <summary>The specific online channel selected by the cashier (Easypaisa / JazzCash / Bank Transfer).</summary>
+        public string? SelectedOnlineMethod
+        {
+            get => _selectedOnlineMethod;
+            set
+            {
+                if (SetProperty(ref _selectedOnlineMethod, value))
+                    OnPropertyChanged(nameof(SelectedOnlineMethod));
+            }
+        }
+
         private string _selectedPaymentMethod = "Cash";
         public string SelectedPaymentMethod
         {
@@ -295,6 +330,7 @@ namespace GroceryPOS.ViewModels
                 if (SetProperty(ref _selectedPaymentMethod, value))
                 {
                     OnPropertyChanged(nameof(IsCashPayment));
+                    OnPropertyChanged(nameof(IsOnlinePayment));
                     OnPropertyChanged(nameof(IsAmountEditable));
                     if (!IsCashPayment)
                     {
@@ -303,7 +339,8 @@ namespace GroceryPOS.ViewModels
                     }
                     else
                     {
-                        // Cash: clear amount and focus the field
+                        // Cash: clear sub-method and focus the amount field
+                        SelectedOnlineMethod = null;
                         CashReceivedText = "";
                         FocusCashReceived = false;
                         OnPropertyChanged(nameof(FocusCashReceived));
@@ -314,7 +351,8 @@ namespace GroceryPOS.ViewModels
                 }
             }
         }
-        public bool IsCashPayment => SelectedPaymentMethod == "Cash";
+        public bool IsCashPayment    => SelectedPaymentMethod == "Cash";
+        public bool IsOnlinePayment  => SelectedPaymentMethod == "Online";
 
         private bool _focusCashReceived;
         public bool FocusCashReceived { get => _focusCashReceived; set => SetProperty(ref _focusCashReceived, value); }
@@ -342,11 +380,12 @@ namespace GroceryPOS.ViewModels
         public ICommand CancelAddAddressCommand { get; }
         public ICommand SaveAddressCommand { get; }
 
-        public BillingViewModel(AuthService authService, ItemService itemService, BillService billService, PrintService printService, IStockService stockService, CustomerService customerService, CreditService creditService, BillRepository billRepo)
+        public BillingViewModel(AuthService authService, ItemService itemService, BillService billService, PrintService printService, IStockService stockService, CustomerService customerService, CreditService creditService, BillRepository billRepo, AccountService accountService)
         {
             _authService = authService; _itemService = itemService; _billService = billService; _printService = printService; _stockService = stockService;            _customerService = customerService;
             _creditService   = creditService;
             _billRepo        = billRepo;
+            _accountService  = accountService;
             Tabs = new ObservableCollection<BillingTab>(); AddNewTab();
             _timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += (s, e) => { OnPropertyChanged(nameof(CurrentTime)); OnPropertyChanged(nameof(CurrentDateTime)); };
@@ -384,6 +423,22 @@ namespace GroceryPOS.ViewModels
             _stockService.StockChanged += LoadDashboardStats;
             LoadDashboardStats();
             LoadProducts();
+            LoadActiveAccounts();
+        }
+
+        private void LoadActiveAccounts()
+        {
+            try
+            {
+                var accounts = _accountService.GetActiveAccounts();
+                ActiveAccounts = new ObservableCollection<Account>(accounts);
+                if (ActiveAccounts.Any())
+                    SelectedAccount = ActiveAccounts.First();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to load active accounts", ex);
+            }
         }
 
         private void LoadProducts() { var items = _itemService.GetAllItems(); ItemList = new ObservableCollection<Item>(items); FilteredItemList = new ObservableCollection<Item>(items); }
@@ -658,6 +713,15 @@ namespace GroceryPOS.ViewModels
 
                 if (!IsCashPayment)
                 {
+                    // ── Validate online account selection ──
+                    if (SelectedAccount == null)
+                    {
+                        StatusMessage = "✗ Please select a payment account (e.g. Bank/Easypaisa).";
+                        OnPropertyChanged(nameof(StatusMessage));
+                        ShowPopupError("Please select a payment account.\nChoose a Bank, Easypaisa, or JazzCash account.");
+                        return;
+                    }
+
                     if (HasSelectedCustomer)
                     {
                         // Online + registered: allow partial payment, rest goes to credit
@@ -690,7 +754,18 @@ namespace GroceryPOS.ViewModels
                     }
                 }
 
-                var sb = _billService.CompleteBill(_authService.CurrentUser?.Id, SelectedCustomer?.CustomerId, SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), d, t, cashReceived, paidAmount, SelectedBillingAddress, SelectedPaymentMethod);
+                var sb = _billService.CompleteBill(
+                    _authService.CurrentUser?.Id, 
+                    SelectedCustomer?.CustomerId, 
+                    SelectedTab.CartItems.Select(c => new Models.BillDescription { ItemId = c.ItemId, Quantity = c.Quantity, UnitPrice = c.UnitPrice, ItemDescription = c.ItemDescription }).ToList(), 
+                    d, 
+                    t, 
+                    cashReceived, 
+                    paidAmount, 
+                    SelectedBillingAddress, 
+                    SelectedPaymentMethod, 
+                    SelectedOnlineMethod,
+                    SelectedAccount?.Id);
 
                 // Ensure Customer object is attached for PrintService
                 sb.Customer = SelectedCustomer;
@@ -705,7 +780,6 @@ namespace GroceryPOS.ViewModels
         }
         private async Task AttemptPrint(Bill b) 
         { 
-            b.PrintAttempts++; 
             bool isOnline = _printService.IsPrinterOnline();
 
             if (isOnline)
@@ -713,13 +787,13 @@ namespace GroceryPOS.ViewModels
                 bool printSuccess = _printService.PrintReceipt(b, _authService.CurrentUser?.FullName ?? "Cashier");
                 if (printSuccess)
                 {
-                    _billRepo.UpdatePrintStatus(b.BillId, true, DateTime.Now, b.PrintAttempts); 
+                    _billRepo.UpdatePrintStatus(b.BillId, true, DateTime.Now); 
                     return;
                 }
             }
 
             // Printer is offline or print failed. Complete the sale normally without queuing.
-            _billRepo.UpdatePrintStatus(b.BillId, false, null, b.PrintAttempts); 
+            _billRepo.UpdatePrintStatus(b.BillId, false, null); 
         }
         private void ClearCart() 
         { 
@@ -730,7 +804,10 @@ namespace GroceryPOS.ViewModels
             SelectedTab.CashReceivedText = "0"; 
             PendingCreditAmount = 0; 
             SelectedPaymentMethod = "Cash";
+            SelectedOnlineMethod = null;
+            SelectedAccount = ActiveAccounts.FirstOrDefault();
             OnPropertyChanged(nameof(IsCashPayment));
+            OnPropertyChanged(nameof(IsOnlinePayment));
             ClearCustomer(); 
             RecalculateTotal(); 
             

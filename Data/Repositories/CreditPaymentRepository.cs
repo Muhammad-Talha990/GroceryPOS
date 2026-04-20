@@ -12,6 +12,7 @@ namespace GroceryPOS.Data.Repositories
     /// </summary>
     public class CreditPaymentRepository
     {
+        private readonly CustomerLedgerRepository _ledgerRepo = new();
         // ────────────────────────────────────────────
         //  RECORD a payment (atomic log)
         // ────────────────────────────────────────────
@@ -22,19 +23,65 @@ namespace GroceryPOS.Data.Repositories
         public void RecordPayment(CreditPayment payment)
         {
             using var conn = DatabaseHelper.GetConnection();
-            using var cmd = conn.CreateCommand();
-            
-            cmd.CommandText = @"
-                INSERT INTO Payments (BillId, Amount, PaymentMethod, TransactionType, PaidAt)
-                VALUES (@bid, @amt, 'Cash', 'Credit Payment', @at);
-                SELECT last_insert_rowid();";
-            
-            cmd.Parameters.AddWithValue("@bid", payment.BillId);
-            cmd.Parameters.AddWithValue("@amt", Math.Round(payment.AmountPaid, 2));
-            cmd.Parameters.AddWithValue("@at", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-            
-            payment.PaymentId = Convert.ToInt32(cmd.ExecuteScalar());
-            AppLogger.Info($"CreditPayment recorded: BillId={payment.BillId}, Amount={payment.AmountPaid:N2}");
+            using var txn = conn.BeginTransaction();
+
+            try
+            {
+                // 1. Get CustomerId from Bill
+                int customerId = 0;
+                string invoiceNum = "";
+                using (var cmdBill = conn.CreateCommand())
+                {
+                    cmdBill.Transaction = txn;
+                    cmdBill.CommandText = "SELECT CustomerId, BillId FROM Bills WHERE BillId = @bid;";
+                    cmdBill.Parameters.AddWithValue("@bid", payment.BillId);
+                    using var reader = cmdBill.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        customerId = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                        invoiceNum = reader.GetInt32(1).ToString("D5");
+                    }
+                }
+
+                // 2. Record Payment
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = txn;
+                cmd.CommandText = @"
+                    INSERT INTO Payments (BillId, Amount, PaymentMethod, TransactionType, Note, PaidAt)
+                    VALUES (@bid, @amt, 'Cash', 'Credit Payment', @note, @at);
+                    SELECT last_insert_rowid();";
+                
+                cmd.Parameters.AddWithValue("@bid", payment.BillId);
+                cmd.Parameters.AddWithValue("@amt", Math.Round(payment.AmountPaid, 2));
+                cmd.Parameters.AddWithValue("@note", (object?)payment.Note ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@at", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                
+                payment.PaymentId = Convert.ToInt32(cmd.ExecuteScalar());
+
+                // 3. Record Ledger Entry
+                if (customerId > 0)
+                {
+                    _ledgerRepo.AddEntry(new CustomerLedgerEntry
+                    {
+                        CustomerId = customerId,
+                        Type = "PAYMENT",
+                        ReferenceId = invoiceNum,
+                        Description = $"Payment received (Invoice #{invoiceNum})",
+                        Debit = 0,
+                        Credit = payment.AmountPaid,
+                        EntryDate = DateTime.Now
+                    }, conn, txn);
+                }
+
+                txn.Commit();
+                AppLogger.Info($"CreditPayment recorded: BillId={payment.BillId}, Amount={payment.AmountPaid:N2}");
+            }
+            catch (Exception ex)
+            {
+                txn.Rollback();
+                AppLogger.Error("Failed to record credit payment transaction", ex);
+                throw;
+            }
         }
 
         // ────────────────────────────────────────────
@@ -47,10 +94,11 @@ namespace GroceryPOS.Data.Repositories
             var list = new List<CreditPayment>();
             using var conn = DatabaseHelper.GetConnection();
             using var cmd  = conn.CreateCommand();
+            // Filter out 'Return Offset' transactions. We only want real cash/online payments here.
             cmd.CommandText = @"
-                SELECT PaymentId, BillId, Amount, PaidAt
+                SELECT PaymentId, BillId, Amount, PaidAt, TransactionType
                 FROM Payments
-                WHERE BillId = @bid
+                WHERE BillId = @bid AND TransactionType != 'Return Offset'
                 ORDER BY PaidAt DESC;";
             cmd.Parameters.AddWithValue("@bid", billId);
 
@@ -59,10 +107,11 @@ namespace GroceryPOS.Data.Repositories
             {
                 list.Add(new CreditPayment
                 {
-                    PaymentId  = reader.GetInt32(0),
-                    BillId     = reader.GetInt32(1),
-                    AmountPaid = reader.GetDouble(2),
-                    PaidAt     = reader.GetDateTime(3)
+                    PaymentId       = reader.GetInt32(0),
+                    BillId          = reader.GetInt32(1),
+                    AmountPaid      = reader.GetDouble(2),
+                    PaidAt          = reader.GetDateTime(3),
+                    TransactionType = reader.GetString(4)
                 });
             }
             return list;

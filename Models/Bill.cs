@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace GroceryPOS.Models
 {
@@ -50,7 +51,7 @@ namespace GroceryPOS.Models
         public Bill? ParentBill { get; set; }
 
         /// <summary>Related return history for the original bill (optional).</summary>
-        public List<Bill> ReturnHistory { get; set; } = new();
+        public ObservableCollection<Bill> ReturnHistory { get; set; } = new();
 
         /// <summary>Flat tax amount applied to this bill.</summary>
         public double TaxAmount { get; set; }
@@ -66,23 +67,28 @@ namespace GroceryPOS.Models
         /// <summary>Final total: SubTotal + TaxAmount - DiscountAmount.</summary>
         public double GrandTotal => SubTotal + TaxAmount - DiscountAmount;
 
-        /// <summary>Total amount successfully paid (from Payments table).</summary>
+        /// <summary>Net value after returns: GrandTotal - ReturnedAmount.</summary>
+        public double NetTotal => GrandTotal - ReturnedAmount;
+
+        /// <summary>Total value of items returned (from BillReturns table).</summary>
+        public double ReturnedAmount { get; set; }
+
+        /// <summary>Total amount successfully paid (from Payments table, excluding return offsets).</summary>
         public double PaidAmount { get; set; }
 
-        /// <summary>Outstanding balance: GrandTotal - PaidAmount.</summary>
-        public double RemainingAmount => Math.Max(0, GrandTotal - PaidAmount);
+        /// <summary>Outstanding balance: GrandTotal - ReturnedAmount - PaidAmount.</summary>
+        public double RemainingAmount => Math.Max(0, Math.Round(GrandTotal - ReturnedAmount - PaidAmount, 2));
 
         /// <summary>Navigation property for line items.</summary>
-        public List<BillDescription> Items { get; set; } = new();
+        public ObservableCollection<BillDescription> Items { get; set; } = new();
 
         /// <summary>Returns calculated based on this bill.</summary>
-        public List<BillDescription> ReturnedItems { get; set; } = new();
+        public ObservableCollection<BillDescription> ReturnedItems { get; set; } = new();
 
         // ── UI Helpers ──
 
         public bool IsPrinted { get; set; }
         public DateTime? PrintedAt { get; set; }
-        public int PrintAttempts { get; set; }
         public bool IsPendingPrint => !IsPrinted && Status != "Cancelled";
 
         public string PaymentStatus => RemainingAmount <= 0 ? "Paid" : (PaidAmount > 0 ? "Partial" : "Unpaid");
@@ -111,7 +117,31 @@ namespace GroceryPOS.Models
         /// <summary>Optional billing address for the customer.</summary>
         public string? BillingAddress { get; set; }
 
-        /// <summary>Payment method used for this bill (Cash, Card, Credit).</summary>
+        /// <summary>Payment method used for this bill (Cash, Online).</summary>
         public string PaymentMethod { get; set; } = "Cash";
+
+        /// <summary>
+        /// For online payments: the specific channel used (Easypaisa, JazzCash, Bank Transfer).
+        /// Null for Cash bills and for legacy records that pre-date this feature.
+        /// </summary>
+        public string? OnlinePaymentMethod { get; set; }
+
+        /// <summary>
+        /// Foreign Key to Accounts table for structured online payments.
+        /// </summary>
+        public int? AccountId { get; set; }
+
+        /// <summary>
+        /// Navigation property for the account that received the payment.
+        /// </summary>
+        public Account? Account { get; set; }
+
+        // ── Audit History (Audit Drill-down) ──
+
+        /// <summary>All payment installments recorded against this specific bill.</summary>
+        public ObservableCollection<CreditPayment> PaymentLogs { get; set; } = new();
+
+        /// <summary>All returns recorded against this specific bill.</summary>
+        public ObservableCollection<ReturnAuditGroup> ReturnLogs { get; set; } = new();
     }
 }

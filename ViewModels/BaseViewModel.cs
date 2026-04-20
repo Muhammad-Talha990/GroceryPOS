@@ -40,6 +40,22 @@ namespace GroceryPOS.ViewModels
             PopupErrorVisible = false;
         }
 
+        // ── Popup Success ──
+        private string _popupSuccessMessage = "";
+        public string PopupSuccessMessage { get => _popupSuccessMessage; set => SetProperty(ref _popupSuccessMessage, value); }
+
+        private bool _popupSuccessVisible;
+        public bool PopupSuccessVisible { get => _popupSuccessVisible; set => SetProperty(ref _popupSuccessVisible, value); }
+
+        protected async void ShowPopupSuccess(string message)
+        {
+            PopupSuccessMessage = message;
+            PopupSuccessVisible = true;
+            SystemSounds.Asterisk.Play();
+            await Task.Delay(2500);
+            PopupSuccessVisible = false;
+        }
+
         /// <summary>
         /// Safely executes an action on the UI (Dispatcher) thread.
         /// </summary>

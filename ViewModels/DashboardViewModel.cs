@@ -107,7 +107,8 @@ namespace GroceryPOS.ViewModels
             TodayOnlinePayments = _billService.GetTodayOnlinePayments();
 
             TodayReturns = _billService.GetTodayReturnsTotal();
-            TodayCash = TodaySalesCash + TodayRecoveredCredit; // This used to be total cash received, keeping it for backward compat if needed, but UI will use TodayCashInHand
+            TodayNetSales = _billService.GetTodayNetSales();
+            TodayCash = TodaySalesCash + TodayRecoveredCredit;
             TotalProducts = _itemService.GetTotalItemCount();
             LowStockCount = _stockService.GetLowStockCount();
 

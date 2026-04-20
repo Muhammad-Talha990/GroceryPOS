@@ -6,6 +6,7 @@ using System.Windows.Input;
 using GroceryPOS.Helpers;
 using GroceryPOS.Models;
 using GroceryPOS.Services;
+using GroceryPOS.Data.Repositories;
 
 namespace GroceryPOS.ViewModels
 {
@@ -15,12 +16,28 @@ namespace GroceryPOS.ViewModels
     /// </summary>
     public class CustomerLedgerViewModel : BaseViewModel
     {
+        // ── Helper model for the combined timeline ──
+        public class BillHistoryEvent
+        {
+            public DateTime Date { get; set; }
+            public string Type { get; set; } = "PAYMENT"; // SALE, PAYMENT, RETURN
+            public string Description { get; set; } = string.Empty;
+            public double Amount { get; set; }
+            public string TypeColor => Type switch {
+                "SALE" => "#3B82F6",
+                "PAYMENT" => "#22C55E",
+                "RETURN" => "#F59E0B",
+                _ => "#94A3B8"
+            };
+        }
         private readonly CreditService _creditService;
         private readonly CustomerService _customerService;
         private readonly PrintService _printService;
         private readonly AuthService _authService;
         private readonly IStockService _stockService;
         private readonly IReturnService _returnService;
+        private readonly CustomerLedgerRepository _ledgerRepo = new();
+        private readonly BillRepository _billRepo = new();
 
         // ── Selected customer ──
         private Customer? _customer;
@@ -73,7 +90,7 @@ namespace GroceryPOS.ViewModels
                 {
                     OnPropertyChanged(nameof(HasSelectedBill));
                     OnPropertyChanged(nameof(SelectedBillRemaining));
-                    LoadPaymentHistory();
+                    LoadBillTimeline();
                 }
             }
         }
@@ -88,39 +105,77 @@ namespace GroceryPOS.ViewModels
             set => SetProperty(ref _isBillDetailOpen, value);
         }
 
-        public ObservableCollection<CreditPayment> PaymentHistory { get; } = new();
+        public ObservableCollection<BillHistoryEvent> Timeline { get; } = new();
 
-        private void LoadPaymentHistory()
+        private void LoadBillTimeline()
         {
-            PaymentHistory.Clear();
+            Timeline.Clear();
             if (SelectedBill == null) return;
 
             try
             {
+                // 1. Deep load details (Items, Payments, Returns)
+                _billRepo.LoadAuditLogs(SelectedBill);
+
+                var events = new List<BillHistoryEvent>();
+
+                // A. The original SALE
+                events.Add(new BillHistoryEvent {
+                    Date = SelectedBill.BillDateTime,
+                    Type = "SALE",
+                    Description = $"Invoice #{SelectedBill.InvoiceNumber} created",
+                    Amount = SelectedBill.GrandTotal
+                });
+
+                // B. Payments (Initial or Installments)
                 var history = _creditService.GetPaymentHistory(SelectedBill.BillId);
-                
                 double subsequentPaymentsTotal = history.Sum(h => h.AmountPaid);
                 double initialPayment = Math.Round(SelectedBill.PaidAmount - subsequentPaymentsTotal, 2);
 
-                foreach (var p in history)
-                {
-                    PaymentHistory.Add(p);
-                }
-
                 if (initialPayment > 0)
                 {
-                    PaymentHistory.Add(new CreditPayment
-                    {
-                        BillId = SelectedBill.BillId,
-                        AmountPaid = initialPayment,
-                        PaidAt = SelectedBill.BillDateTime,
-                        Note = "Initial Payment (At checkout)"
+                    events.Add(new BillHistoryEvent {
+                        Date = SelectedBill.BillDateTime,
+                        Type = "PAYMENT",
+                        Description = "initial payment",
+                        Amount = initialPayment
                     });
+                }
+
+                foreach (var p in history)
+                {
+                    events.Add(new BillHistoryEvent {
+                        Date = p.PaidAt,
+                        Type = "PAYMENT",
+                        Description = string.IsNullOrEmpty(p.Note) ? "adjust credits" : p.Note,
+                        Amount = p.AmountPaid
+                    });
+                }
+
+                // C. Returns
+                foreach (var ret in SelectedBill.ReturnLogs)
+                {
+                    // For returns, we want to show the TOTAL VALUE of returned items, 
+                    // not just the cash refund (which is often 0 for credit bills).
+                    double returnTotalValue = ret.Items.Sum(i => i.TotalPrice);
+
+                    events.Add(new BillHistoryEvent {
+                        Date = ret.ReturnedAt,
+                        Type = "RETURN",
+                        Description = "item returned",
+                        Amount = returnTotalValue
+                    });
+                }
+
+                // Sort everything chronologically and add to UI
+                foreach (var ev in events.OrderBy(x => x.Date))
+                {
+                    Timeline.Add(ev);
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Error("CustomerLedgerViewModel.LoadPaymentHistory failed", ex);
+                AppLogger.Error("CustomerLedgerViewModel.LoadBillTimeline failed", ex);
             }
         }
 
@@ -228,18 +283,21 @@ namespace GroceryPOS.ViewModels
 
             try
             {
-                var entries = _creditService.GetLedger(Customer.CustomerId);
+                var bills = _billRepo.GetBillsByCustomerId(Customer.CustomerId);
                 LedgerEntries.Clear();
-                foreach (var b in entries)
-                    LedgerEntries.Add(b);
+                foreach (var bill in bills)
+                    LedgerEntries.Add(bill);
 
-                var (credit, paid, pending) = _creditService.GetPendingSummary(Customer.CustomerId);
-                TotalCredit  = credit;
-                TotalPaid    = paid;
-                TotalPending = pending;
+                // Summary calculations from Bills
+                TotalCredit  = LedgerEntries.Sum(e => e.GrandTotal);
+                TotalPaid    = LedgerEntries.Sum(e => e.PaidAmount);
+                TotalPending = LedgerEntries.Sum(e => e.RemainingAmount);
 
                 // Refresh the customer's pending credit too
-                Customer.PendingCredit = pending;
+                Customer.PendingCredit = TotalPending;
+                OnPropertyChanged(nameof(TotalPending));
+                OnPropertyChanged(nameof(TotalPaid));
+                OnPropertyChanged(nameof(TotalCredit));
                 OnPropertyChanged(nameof(Customer));
             }
             catch (Exception ex)
@@ -281,7 +339,6 @@ namespace GroceryPOS.ViewModels
         private void ClosePaymentPanel()
         {
             IsPaymentPanelOpen = false;
-            SelectedBill       = null;
             PaymentAmountText  = string.Empty;
             PaymentError       = string.Empty;
         }
@@ -316,7 +373,7 @@ namespace GroceryPOS.ViewModels
 
                 var updatedBill = _creditService.RecordPayment(SelectedBill.BillId, amount, PaymentNote);
 
-                // Print payment receipt (same as billing section "pay due")
+                // Print payment receipt
                 try
                 {
                     updatedBill.Customer = Customer;
@@ -328,11 +385,21 @@ namespace GroceryPOS.ViewModels
                 }
 
                 StatusMessage = $"✓ Payment of Rs. {amount:N2} recorded successfully for Bill #{invoiceNumber}.";
-                MessageBox.Show(StatusMessage, "Payment Recorded", MessageBoxButton.OK, MessageBoxImage.Information);
-                OnPropertyChanged(nameof(StatusMessage));
+                
+                // Real-time UI Sync:
+                // 1. Refresh the grid and total summaries
+                LoadLedger(); 
+                
+                // 2. Re-fetch current bill but KEEP it selected to keep sidebar open
+                var refreshedBill = _creditService.GetBillById(billId);
+                if (refreshedBill != null)
+                {
+                    refreshedBill.Customer = Customer;
+                    SelectedBill = refreshedBill;
+                    LoadBillTimeline(); // Refresh chronological timeline in sidebar
+                }
 
                 ClosePaymentPanel();
-                LoadLedger();
             }
             catch (Exception ex)
             {
@@ -340,65 +407,40 @@ namespace GroceryPOS.ViewModels
                 AppLogger.Error("CustomerLedgerViewModel.RecordPayment failed", ex);
             }
         }
-        private async void ViewBill(Bill? bill)
+        private void ViewBill(Bill? bill)
         {
             if (bill == null) return;
 
-            if (bill.IsReturn && bill.ParentBillId.HasValue)
+            try 
             {
-                try 
-                {
-                    var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
-                    bill.ParentBill = original;
-                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
-                    
-                    double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
-                    bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Error("Failed to fetch return metadata for view (Ledger)", ex);
-                }
+                // Deep load Audit Logs (Items, Payments, Returns)
+                _billRepo.LoadAuditLogs(bill);
+                SelectedBill = bill;
+                IsBillDetailOpen = true;
             }
-
-            SelectedBill = bill;
-            IsBillDetailOpen = true;
+            catch (Exception ex)
+            {
+                AppLogger.Error("Failed to load bill audit details", ex);
+                ShowPopupError("Failed to load detailed bill history.");
+            }
         }
 
-        private async void PrintBill(Bill? bill)
+        private void PrintBill(Bill? bill)
         {
             if (bill == null) return;
 
-            if (bill.IsReturn && bill.ParentBillId.HasValue && bill.ParentBill == null)
-            {
-                try 
-                {
-                    var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
-                    bill.ParentBill = original;
-                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
-
-                    double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
-                    bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Error("Failed to fetch return metadata for print (Ledger)", ex);
-                }
-            }
-            
             bool isOnline = _printService.IsPrinterOnline();
-
             if (isOnline)
             {
                 bool printSuccess = _printService.PrintReceipt(bill, _authService.CurrentUser?.FullName ?? "System Admin");
                 if (!printSuccess)
                 {
-                    System.Windows.MessageBox.Show("Failed to communicate with the printer. Please check the connection.", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show("Failed to communicate with the printer.", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 }
             }
             else
             {
-                System.Windows.MessageBox.Show("Printer is currently unavailable or offline.\nPlease ensure the printer is connected and turned on.", "Printer Offline", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("Printer is offline.", "Printer Offline", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         }
 

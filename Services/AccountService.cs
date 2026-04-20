@@ -1,0 +1,31 @@
+using System;
+using System.Collections.Generic;
+using GroceryPOS.Data.Repositories;
+using GroceryPOS.Models;
+
+namespace GroceryPOS.Services
+{
+    /// <summary>
+    /// Service for managing payment accounts.
+    /// Provides accounts for the billing view and reporting.
+    /// </summary>
+    public class AccountService
+    {
+        private readonly AccountRepository _accountRepo;
+
+        public AccountService(AccountRepository accountRepo)
+        {
+            _accountRepo = accountRepo;
+        }
+
+        public List<Account> GetActiveAccounts()
+        {
+            return _accountRepo.GetActiveAccounts();
+        }
+
+        public Account? GetAccountById(int id)
+        {
+            return _accountRepo.GetById(id);
+        }
+    }
+}

@@ -37,5 +37,8 @@ namespace GroceryPOS.Models
 
         /// <summary>Item description, helpful for UI.</summary>
         public string? ProductDescription { get; set; }
+
+        /// <summary>Computed total amount (UnitPrice × ReturnQuantity).</summary>
+        public double TotalAmount => UnitPrice * ReturnQuantity;
     }
 }

@@ -635,7 +635,45 @@
                     <!-- Payment Method -->
                     <TextBlock DockPanel.Dock="Top" Text="Payment Method" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4"/>
                     <ComboBox DockPanel.Dock="Top" ItemsSource="{Binding PaymentMethods}" SelectedItem="{Binding SelectedPaymentMethod}"
-                              FontSize="14" Padding="10,8" Margin="0,0,0,10"/>
+                              FontSize="14" Padding="10,8" Margin="0,0,0,6"/>
+
+                    <!-- Online Account Selection (visible only when Online is selected) -->
+                    <StackPanel DockPanel.Dock="Top"
+                                Visibility="{Binding IsOnlinePayment, Converter={StaticResource BoolToVis}}"
+                                Margin="0,0,0,10">
+                        <TextBlock Text="🏢 Select Payment Account" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding ActiveAccounts}"
+                                  SelectedItem="{Binding SelectedAccount}"
+                                  FontSize="14" Padding="10,4"
+                                  x:Name="AccountComboBox">
+                            <ComboBox.Style>
+                                <Style TargetType="ComboBox" BasedOn="{StaticResource ModernComboBox}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedAccount}" Value="{x:Null}">
+                                            <Setter Property="BorderBrush" Value="#F59E0B"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ComboBox.Style>
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"/>
+                                        <StackPanel Orientation="Horizontal" Opacity="0.7">
+                                            <TextBlock Text="{Binding AccountType}" FontSize="10" FontWeight="Bold"/>
+                                            <TextBlock Text=" • " FontSize="10"/>
+                                            <TextBlock Text="{Binding BankName}" FontSize="10" Visibility="{Binding BankName, Converter={StaticResource StringToVis}}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="⚠ Required: Select an account to receive payment"
+                                   FontSize="10" Foreground="#F59E0B" Margin="0,3,0,0"
+                                   Visibility="{Binding SelectedAccount, Converter={StaticResource NullToVis}}"/>
+                    </StackPanel>
+
 
                     <!-- Amount Received -->
                     <TextBlock DockPanel.Dock="Top" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,4">

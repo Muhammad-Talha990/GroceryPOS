@@ -11,8 +11,8 @@
         <BooleanToVisibilityConverter x:Key="WpfBoolToVis"/>
         <converters:StringToVisibilityConverter x:Key="StringToVis"/>
         <converters:PaymentStatusColorConverter x:Key="PayStatusColor"/>
-        <converters:NumericToVisibilityConverter x:Key="NumericToVis"/>
-        <converters:GreaterThanZeroConverter x:Key="GreaterThanZero"/>
+        <converters:NumericToVisibilityConverter x:Key="NumericToVisibilityConverter"/>
+        <converters:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter"/>
         <converters:CountToVisibilityConverter x:Key="InverseCountToVis" Inverse="True"/>
     </UserControl.Resources>
 
@@ -131,66 +131,112 @@
                         </Style>
                     </DataGrid.CellStyle>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Date" Binding="{Binding BillDateTime, StringFormat='yyyy-MM-dd HH:mm'}" Width="150"/>
-                        <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber, Mode=OneWay}" Width="100" IsReadOnly="True"/>
-                        <DataGridTextColumn Header="Paid" Binding="{Binding PaidAmount, StringFormat='Rs. {0:N0}'}" Width="100"/>
-                        <!-- Remaining Amount — hidden for fully paid bills -->
-                        <DataGridTemplateColumn Header="Remaining" Width="90">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Padding="4,0" VerticalAlignment="Center">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="{Binding RemainingAmount, StringFormat='Rs. {0:N0}'}"/>
-                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
-                                                <Setter Property="FontWeight" Value="SemiBold"/>
-                                                <Style.Triggers>
-                                                    <!-- Hide "Rs. 0" for fully paid bills — show muted dash -->
-                                                    <DataTrigger Binding="{Binding HasPendingCredit}" Value="False">
-                                                        <Setter Property="Text" Value="—"/>
-                                                        <Setter Property="Foreground" Value="{DynamicResource SubTextBrush}"/>
-                                                        <Setter Property="FontWeight" Value="Normal"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Date" Binding="{Binding CreatedAt, StringFormat='dd/MM/yy HH:mm'}" Width="150" IsReadOnly="True"/>
 
-                        <!-- Payment Status badge -->
-                        <DataGridTemplateColumn Header="Status" Width="100">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="10" Padding="8,3" HorizontalAlignment="Left"
-                                            Background="{Binding PaymentStatus, Converter={StaticResource PayStatusColor}}">
-                                        <TextBlock Text="{Binding PaymentStatus}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
-                                    </Border>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Invoice" Binding="{Binding InvoiceNumber}" Width="100" IsReadOnly="True">
+                             <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
 
-                        <!-- Pay Button -->
-                        <DataGridTemplateColumn Header="Action" Width="180">
+                        <DataGridTextColumn Header="Total Amount" Binding="{Binding GrandTotal, StringFormat='Rs. {0:N0}'}" Width="120" IsReadOnly="True">
+                             <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#3B82F6"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Paid" Binding="{Binding PaidAmount, StringFormat='Rs. {0:N0}'}" Width="100" IsReadOnly="True">
+                             <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#22C55E"/>
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Returned" Binding="{Binding ReturnedAmount, StringFormat='Rs. {0:N0}'}" Width="100" IsReadOnly="True">
+                             <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#F59E0B"/>
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Balance" Binding="{Binding RemainingAmount, StringFormat='Rs. {0:N0}'}" Width="120" IsReadOnly="True">
+                             <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RemainingAmount, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
+                                             <Setter Property="Foreground" Value="#EF4444"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding RemainingAmount, Converter={StaticResource GreaterThanZeroConverter}}" Value="False">
+                                             <Setter Property="Foreground" Value="#22C55E"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTemplateColumn Width="240" Header="Actions">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button Content="📂 View" Cursor="Hand"
-                                                Command="{Binding DataContext.ViewBillCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                CommandParameter="{Binding}"
-                                                Foreground="{DynamicResource AccentBrush}" Background="Transparent" BorderThickness="0" FontSize="12" Padding="6,4"
-                                                Margin="0,0,8,0"/>
-                                        <Button Content="🖨️ Print" Cursor="Hand"
-                                                Command="{Binding DataContext.PrintBillCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                CommandParameter="{Binding}"
-                                                Foreground="{DynamicResource SuccessBrush}" Background="Transparent" BorderThickness="0" FontSize="12" Padding="6,4"
-                                                Margin="0,0,8,0"/>
-                                        <Button Content="💳 Pay" Cursor="Hand"
+                                    <StackPanel Orientation="Horizontal" Margin="8,4">
+                                        <!-- PAY BUTTON -->
+                                        <Button Content="💳 Pay" 
                                                 Command="{Binding DataContext.OpenPaymentPanelCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                 CommandParameter="{Binding}"
-                                                Foreground="{DynamicResource PrimaryBrush}" Background="Transparent" BorderThickness="0" FontSize="12" Padding="6,4"
-                                                Visibility="{Binding HasPendingCredit, Converter={StaticResource BoolToVis}}"/>
+                                                ToolTip="Record a payment for this bill"
+                                                Background="Transparent" Foreground="#22C55E" BorderThickness="0" 
+                                                Cursor="Hand" Padding="4,2" Margin="0,0,12,0"
+                                                Visibility="{Binding HasPendingCredit, Converter={StaticResource WpfBoolToVis}}">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontSize="12"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- PRINT BUTTON -->
+                                        <Button Content="🖨 Print" 
+                                                Command="{Binding DataContext.PrintBillCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Reprint this bill"
+                                                Background="Transparent" Foreground="#94A3B8" BorderThickness="0" 
+                                                Cursor="Hand" Padding="4,2" Margin="0,0,12,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontSize="12"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- VIEW DETAIL BUTTON -->
+                                        <Button Content="View Detail" 
+                                                Command="{Binding DataContext.ViewBillCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}"
+                                                Background="Transparent" Foreground="#3B82F6" BorderThickness="0" 
+                                                Cursor="Hand" Padding="4,2">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontSize="12"/>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -226,31 +272,38 @@
                     <Border Grid.Row="2" Background="#0F172A" CornerRadius="8" Padding="12" Margin="0,0,0,16" BorderBrush="#334155" BorderThickness="1">
                         <StackPanel>
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Bill Date" Foreground="#94A3B8" FontSize="11"/>
-                                <TextBlock Text="{Binding SelectedBill.BillDateTime, StringFormat='yyyy-MM-dd HH:mm'}" HorizontalAlignment="Right" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                <TextBlock Text="Total Invoice" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding SelectedBill.GrandTotal, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="#60A5FA" FontSize="11" FontWeight="SemiBold"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,6" Visibility="{Binding SelectedBill.ReturnedAmount, Converter={StaticResource NumericToVisibilityConverter}}">
+                                <TextBlock Text="(-) Returns" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding SelectedBill.ReturnedAmount, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="#F59E0B" FontSize="11" FontWeight="SemiBold"/>
+                            </Grid>
+                            <Border BorderBrush="#334155" BorderThickness="0,1,0,0" Margin="0,4" 
+                                    Visibility="{Binding SelectedBill.ReturnedAmount, Converter={StaticResource NumericToVisibilityConverter}}"/>
+                            <Grid Margin="0,0,0,6" Visibility="{Binding SelectedBill.ReturnedAmount, Converter={StaticResource NumericToVisibilityConverter}}">
+                                <TextBlock Text="Net Payable" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding SelectedBill.NetTotal, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="White" FontSize="11" FontWeight="Bold"/>
                             </Grid>
                             <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Grand Total" Foreground="#94A3B8" FontSize="11"/>
-                                <TextBlock Text="{Binding SelectedBill.GrandTotal, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="#60A5FA" FontSize="11" FontWeight="Bold"/>
+                                <TextBlock Text="(-) Total Paid" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding SelectedBill.PaidAmount, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="#22C55E" FontSize="11" FontWeight="SemiBold"/>
                             </Grid>
-                            <Grid Margin="0,0,0,6">
-                                <TextBlock Text="Total Paid" Foreground="#94A3B8" FontSize="11"/>
-                                <TextBlock Text="{Binding SelectedBill.PaidAmount, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="{DynamicResource SuccessBrush}" FontSize="11" FontWeight="Bold"/>
-                            </Grid>
+                            <Border BorderBrush="#334155" BorderThickness="0,1,0,0" Margin="0,4"/>
                             <Grid>
-                                <TextBlock Text="Balance Due" Foreground="#94A3B8" FontSize="11"/>
-                                <TextBlock Text="{Binding SelectedBill.RemainingAmount, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="#EF4444" FontSize="11" FontWeight="Bold"/>
+                                <TextBlock Text="Final Balance" Foreground="#94A3B8" FontSize="11" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding SelectedBill.RemainingAmount, StringFormat='Rs. {0:N0}'}" HorizontalAlignment="Right" Foreground="#EF4444" FontSize="14" FontWeight="Black"/>
                             </Grid>
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Grid.Row="3" Text="Payment Logs" Foreground="#94A3B8" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <TextBlock Grid.Row="3" Text="Bill Timeline" Foreground="#94A3B8" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8"/>
 
-                    <DataGrid Grid.Row="3" ItemsSource="{Binding PaymentHistory}"
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding Timeline}"
                                AutoGenerateColumns="False" IsReadOnly="True"
                                Background="Transparent" BorderThickness="0"
                                RowBackground="Transparent"
-                               Foreground="White" FontSize="12" HeadersVisibility="Column"
+                               Foreground="White" FontSize="11" HeadersVisibility="Column"
                                VerticalScrollBarVisibility="Auto" Margin="0,25,0,0">
                         <DataGrid.ColumnHeaderStyle>
                             <Style TargetType="DataGridColumnHeader">
@@ -278,34 +331,44 @@
                             </Style>
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="DATE" Binding="{Binding PaidAt, StringFormat='dd/MM/yy'}" Width="70"/>
-                            <DataGridTextColumn Header="AMOUNT" Binding="{Binding AmountPaid, StringFormat='N0'}" Width="80">
+                            <DataGridTemplateColumn Header="TYPE" Width="60">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding TypeColor}" CornerRadius="3" Padding="4,1" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Type}" Foreground="White" FontSize="9" FontWeight="Bold"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            
+                            <DataGridTextColumn Header="DETAILS" Binding="{Binding Description}" Width="*">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="FontWeight" Value="SemiBold"/>
-                                        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}"/>
-                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter Property="Foreground" Value="#94A3B8"/>
+                                        <Setter Property="FontSize" Value="11"/>
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                                         <Setter Property="VerticalAlignment" Value="Center"/>
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
-                            <DataGridTextColumn Header="NOTE" Binding="{Binding Note}" Width="*">
+
+                            <DataGridTextColumn Header="AMOUNT" Binding="{Binding Amount, StringFormat='N0'}" Width="70">
                                 <DataGridTextColumn.ElementStyle>
                                     <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="#94A3B8"/>
-                                        <Setter Property="FontStyle" Value="Italic"/>
-                                        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter Property="VerticalAlignment" Value="Center"/>
                                     </Style>
                                 </DataGridTextColumn.ElementStyle>
                             </DataGridTextColumn>
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <!-- Empty State for Payment History -->
-                    <TextBlock Grid.Row="3" Text="No payments recorded yet." 
+                    <!-- Empty State -->
+                    <TextBlock Grid.Row="3" Text="No events found." 
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="#475569" FontSize="12" FontStyle="Italic"
-                               Visibility="{Binding PaymentHistory.Count, Converter={StaticResource InverseCountToVis}}"/>
+                               Visibility="{Binding Timeline.Count, Converter={StaticResource InverseCountToVis}}"/>
                 </Grid>
             </Border>
         </Grid>
@@ -394,32 +457,197 @@
         </Border>
 
         <Border Grid.RowSpan="5" Visibility="{Binding IsBillDetailOpen, Converter={StaticResource WpfBoolToVis}}" 
-                Background="#CC000000" IsHitTestVisible="True">
-            <Border Background="White" CornerRadius="4" Padding="0"
+                Background="#CC0F172A" IsHitTestVisible="True" Panel.ZIndex="2000">
+            <Border Background="#F1F5F9" CornerRadius="12" Padding="0"
                     VerticalAlignment="Center" HorizontalAlignment="Center" 
-                    Width="400" MaxHeight="750"
-                    BorderBrush="#E2E8F0" BorderThickness="1">
+                    Width="850" MaxHeight="850"
+                    BorderBrush="#CBD5E1" BorderThickness="1">
                 <Border.Effect>
-                    <DropShadowEffect BlurRadius="40" ShadowDepth="0" Opacity="0.3" Color="Black"/>
+                    <DropShadowEffect BlurRadius="50" ShadowDepth="0" Opacity="0.4" Color="Black"/>
                 </Border.Effect>
-                <DockPanel>
-                    <!-- Modal Header (Close Button) -->
-                    <Grid DockPanel.Dock="Top" Background="#F8FAFC" Height="40">
-                         <Button HorizontalAlignment="Right" Content="X" 
-                                Background="Transparent" Foreground="#64748B" FontSize="16"
-                                Padding="15,0" BorderThickness="0" Cursor="Hand"
-                                Command="{Binding CloseBillDetailCommand}"/>
-                    </Grid>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                    <!-- Print Button at Bottom -->
-                    <Border DockPanel.Dock="Bottom" Background="#F8FAFC" Padding="20,15" BorderThickness="0,1,0,0" BorderBrush="#E2E8F0">
-                        <Button Content="Re-Print Receipt" Command="{Binding PrintBillCommand}" CommandParameter="{Binding SelectedBill}"
-                                Style="{DynamicResource PrimaryButton}" Background="#22C55E" Padding="20,10" HorizontalAlignment="Center"/>
+                    <!-- Header -->
+                    <Border Grid.Row="0" Background="White" CornerRadius="12,12,0,0" Padding="25,20" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="Invoice Audit History" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="Invoice #: " Foreground="#64748B" FontSize="13"/>
+                                    <TextBlock Text="{Binding SelectedBill.InvoiceNumber}" Foreground="#1E293B" FontSize="13" FontWeight="Bold" Margin="0,0,20,0"/>
+                                    <TextBlock Text="Date: " Foreground="#64748B" FontSize="13"/>
+                                    <TextBlock Text="{Binding SelectedBill.CreatedAt, StringFormat='dd MMM yyyy, HH:mm'}" Foreground="#1E293B" FontSize="13" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Content="✕" 
+                                    Background="Transparent" Foreground="#64748B" FontSize="20"
+                                    BorderThickness="0" Cursor="Hand" Padding="10"
+                                    Command="{Binding CloseBillDetailCommand}"/>
+                        </Grid>
                     </Border>
 
-                    <!-- Shared Receipt Control -->
-                    <controls:BillReceiptControl Bill="{Binding SelectedBill}"/>
-                </DockPanel>
+                    <!-- Content (Scrollable for large audit trails) -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="25">
+                        <StackPanel>
+                            <!-- Section 1: 🛒 Items Sold -->
+                            <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,20" BorderBrush="#E2E8F0" BorderThickness="1">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <TextBlock Text="🛒 Original Items Sold" FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+                                        <TextBlock Text="{Binding SelectedBill.GrandTotal, StringFormat='Total Sale Value: Rs.{0:N0}'}" 
+                                                   HorizontalAlignment="Right" Foreground="#1E293B" FontWeight="Bold"/>
+                                    </Grid>
+                                    <DataGrid ItemsSource="{Binding SelectedBill.Items}" AutoGenerateColumns="False" 
+                                              HeadersVisibility="Column" IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                                              GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#F1F5F9">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Product Description" Binding="{Binding ItemDescription}" Width="*"/>
+                                            <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="60"/>
+                                            <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, StringFormat='N0'}" Width="80"/>
+                                            <DataGridTextColumn Header="Total" Binding="{Binding TotalPrice, StringFormat='N0'}" Width="80">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                    </Style>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Section 2: 💵 Payment History -->
+                            <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,20" BorderBrush="#E2E8F0" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="💵 Payment &amp; Installment History" FontSize="15" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,10"/>
+                                    <DataGrid ItemsSource="{Binding SelectedBill.PaymentLogs}" AutoGenerateColumns="False" 
+                                              HeadersVisibility="Column" IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                                              GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#F1F5F9">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Date" Binding="{Binding PaidAt, StringFormat='dd/MM/yy HH:mm'}" Width="120"/>
+                                            <DataGridTextColumn Header="Type" Binding="{Binding TransactionType}" Width="100"/>
+                                            <DataGridTextColumn Header="Method" Binding="{Binding PaymentMethod}" Width="80"/>
+                                            <DataGridTextColumn Header="Amount" Binding="{Binding AmountPaid, StringFormat='Rs. {0:N0}'}" Width="100">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#22C55E"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                    </Style>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                            <DataGridTextColumn Header="Note" Binding="{Binding DisplayNote}" Width="*"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                    <TextBlock Text="No payments recorded." FontStyle="Italic" Foreground="#94A3B8" Margin="0,10,0,0"
+                                               Visibility="{Binding SelectedBill.PaymentLogs.Count, Converter={StaticResource NumericToVisibilityConverter}, ConverterParameter=Inverted}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Section 3: 🔙 Returns Processed -->
+                            <Border Background="White" CornerRadius="8" Padding="15" Margin="0" BorderBrush="#E2E8F0" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="🔙 Returns Progressed" FontSize="15" FontWeight="Bold" Foreground="#0F172A" Margin="0,0,0,10"/>
+                                    <ItemsControl ItemsSource="{Binding SelectedBill.ReturnLogs}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,0,0,15">
+                                                    <Border Background="#F8FAFC" Padding="10,5">
+                                                        <TextBlock FontSize="12" FontWeight="Bold" Foreground="#475569">
+                                                            <Run Text="Return Date: "/><Run Text="{Binding ReturnedAt, StringFormat='dd MMM yyyy, HH:mm'}"/>
+                                                            <Run Text=" (Refund: Rs."/><Run Text="{Binding RefundAmount, StringFormat='N0'}"/><Run Text=")"/>
+                                                        </TextBlock>
+                                                    </Border>
+                                                    <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" 
+                                                              HeadersVisibility="Column" IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                                                              Margin="10,5,0,0" Height="Auto">
+                                                        <DataGrid.Columns>
+                                                            <DataGridTextColumn Header="Returned Product" Binding="{Binding ItemDescription}" Width="*"/>
+                                                            <DataGridTextColumn Header="Qty" Binding="{Binding Quantity}" Width="60"/>
+                                                            <DataGridTextColumn Header="Price" Binding="{Binding UnitPrice, StringFormat='N0'}" Width="80"/>
+                                                            <DataGridTextColumn Header="Value" Binding="{Binding TotalPrice, StringFormat='N0'}" Width="80">
+                                                                <DataGridTextColumn.ElementStyle>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Foreground" Value="#EF4444"/>
+                                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                                    </Style>
+                                                                </DataGridTextColumn.ElementStyle>
+                                                            </DataGridTextColumn>
+                                                        </DataGrid.Columns>
+                                                    </DataGrid>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="No items returned for this invoice." FontStyle="Italic" Foreground="#94A3B8" Margin="0,10,0,0"
+                                               Visibility="{Binding SelectedBill.ReturnLogs.Count, Converter={StaticResource NumericToVisibilityConverter}, ConverterParameter=Inverted}"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Financial Summary Section -->
+                    <Border Grid.Row="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="25,15">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel>
+                                <UniformGrid Columns="3" HorizontalAlignment="Left" Width="500">
+                                    <!-- Original Composition -->
+                                    <StackPanel Margin="0,0,20,10">
+                                        <TextBlock Text="Sub-Total" FontSize="11" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding SelectedBill.SubTotal, StringFormat='Rs. {0:N0}'}" FontSize="14" FontWeight="SemiBold" Foreground="#1E293B"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,20,10">
+                                        <TextBlock Text="Discount" FontSize="11" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding SelectedBill.DiscountAmount, StringFormat='Rs. -{0:N0}'}" FontSize="14" FontWeight="SemiBold" Foreground="#EF4444"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,10">
+                                        <TextBlock Text="Tax" FontSize="11" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding SelectedBill.TaxAmount, StringFormat='Rs. +{0:N0}'}" FontSize="14" FontWeight="SemiBold" Foreground="#1E293B"/>
+                                    </StackPanel>
+
+                                    <!-- Final Values & Tracking -->
+                                    <StackPanel Margin="0,0,20,0">
+                                        <TextBlock Text="Total Invoice" FontSize="11" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding SelectedBill.GrandTotal, StringFormat='Rs. {0:N0}'}" FontSize="14" FontWeight="Bold" Foreground="#3B82F6"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,20,0">
+                                        <TextBlock Text="(-) Total Returns" FontSize="11" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding SelectedBill.ReturnedAmount, StringFormat='Rs. {0:N0}'}" FontSize="14" FontWeight="Bold" Foreground="#EF4444"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,0">
+                                        <TextBlock Text="Total Payments" FontSize="11" Foreground="#64748B"/>
+                                        <TextBlock Text="{Binding SelectedBill.PaidAmount, StringFormat='Rs. {0:N0}'}" FontSize="14" FontWeight="Bold" Foreground="#22C55E"/>
+                                    </StackPanel>
+                                </UniformGrid>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                <TextBlock Text="Final Balance Due" FontSize="12" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                <TextBlock Text="{Binding SelectedBill.RemainingAmount, StringFormat='Rs. {0:N0}'}" FontSize="24" FontWeight="Black" Foreground="#EF4444" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Bottom Bar -->
+                    <Border Grid.Row="3" Background="White" CornerRadius="0,0,12,12" Padding="25,15" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
+                        <Grid>
+                            <Button Content="🖨 Re-Print Bill" Command="{Binding PrintBillCommand}" CommandParameter="{Binding SelectedBill}"
+                                    Style="{DynamicResource PrimaryButton}" Background="#3B82F6" Padding="20,8" HorizontalAlignment="Right" Height="40"/>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Border>
         </Border>
 

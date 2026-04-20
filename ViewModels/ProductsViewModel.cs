@@ -203,6 +203,7 @@ namespace GroceryPOS.ViewModels
 
                 _itemService.AddItem(item);
                 StatusMessage = $"✓ Item '{item.Description}' added successfully!";
+                ShowPopupSuccess($"'{item.Description}' added successfully!");
 
                 ClearForm();
                 LoadProducts();
@@ -241,6 +242,7 @@ namespace GroceryPOS.ViewModels
                 _itemService.UpdateItem(item, _originalBarcode!);
 
                 StatusMessage = $"✓ Item '{FormName}' updated!";
+                ShowPopupSuccess($"'{FormName}' updated successfully!");
                 ClearForm();
                 LoadProducts();
                 LoadCategories();

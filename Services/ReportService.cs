@@ -77,7 +77,7 @@ namespace GroceryPOS.Services
                 FROM BillItems bd
                 INNER JOIN Bills b ON bd.BillId = b.BillId
                 LEFT  JOIN Items i ON bd.ItemId = i.ItemId
-                WHERE b.CreatedAt >= @from AND b.CreatedAt < @to
+                WHERE datetime(b.CreatedAt, 'localtime') >= @from AND datetime(b.CreatedAt, 'localtime') < @to
                 GROUP BY bd.ItemId, ItemDesc
                 ORDER BY TotalRevenue DESC;
             ";
@@ -108,7 +108,7 @@ namespace GroceryPOS.Services
                 SELECT COALESCE(SUM(SubTotal), 0) FROM (
                     SELECT (SELECT SUM(Quantity * UnitPrice - DiscountAmount) FROM BillItems WHERE BillId = b.BillId) as SubTotal
                     FROM Bills b
-                    WHERE CreatedAt >= @from AND CreatedAt < @to
+                    WHERE datetime(CreatedAt, 'localtime') >= @from AND datetime(CreatedAt, 'localtime') < @to
                 );
             ";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -123,7 +123,7 @@ namespace GroceryPOS.Services
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT COUNT(*) FROM Bills
-                WHERE CreatedAt >= @from AND CreatedAt < @to;
+                WHERE datetime(CreatedAt, 'localtime') >= @from AND datetime(CreatedAt, 'localtime') < @to;
             ";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -140,5 +140,12 @@ namespace GroceryPOS.Services
 
         /// <summary>Gets total outstanding customer credit (all-time).</summary>
         public double GetOutstandingCreditTotal() => _billRepo.GetOutstandingCreditTotal();
+
+        /// <summary>
+        /// Returns online payment totals grouped by sub-method (Easypaisa, JazzCash, Bank Transfer)
+        /// for the given date range. Useful for the Reports summary panel.
+        /// </summary>
+        public Dictionary<string, double> GetOnlinePaymentBreakdown(DateTime from, DateTime to)
+            => _billRepo.GetOnlinePaymentBreakdown(from, to);
     }
 }

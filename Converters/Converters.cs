@@ -111,7 +111,11 @@ namespace GroceryPOS.Converters
             else if (value is int iv) d = iv;
             else if (value is decimal dcv) d = (double)dcv;
             
-            return d != 0 ? Visibility.Visible : Visibility.Collapsed;
+            bool isZero = d == 0;
+            bool isInverted = parameter?.ToString() == "Inverted";
+            
+            bool isVisible = isInverted ? isZero : !isZero;
+            return isVisible ? Visibility.Visible : Visibility.Collapsed;
         }
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
     }

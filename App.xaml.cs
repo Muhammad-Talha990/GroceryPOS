@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -65,6 +65,7 @@ public partial class App : Application
         services.AddSingleton<BillReturnRepository>();
         services.AddSingleton<CustomerRepository>();
         services.AddSingleton<CreditPaymentRepository>();
+        services.AddSingleton<AccountRepository>();
 
         // --- Service Layer ---
         services.AddSingleton<DataCacheService>(); // Cache must be singleton for consistency
@@ -74,6 +75,7 @@ public partial class App : Application
         services.AddSingleton<BillService>();
         services.AddSingleton<CustomerService>();
         services.AddSingleton<CreditService>();
+        services.AddSingleton<AccountService>();
         services.AddSingleton<PrintService>();
         services.AddSingleton<ReportService>();
         services.AddSingleton<IReturnService, ReturnService>();

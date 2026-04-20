@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Input;
@@ -425,7 +426,7 @@ namespace GroceryPOS.ViewModels
                 {
                     var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
                     bill.ParentBill = original;
-                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
+                    bill.ReturnHistory = new ObservableCollection<Bill>(returns.Where(r => r.BillId != bill.BillId));
                     
                     double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
                     bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);
@@ -450,7 +451,7 @@ namespace GroceryPOS.ViewModels
                 {
                     var (original, returns) = await _returnService.GetBillWithReturnHistory(bill.ParentBillId.Value);
                     bill.ParentBill = original;
-                    bill.ReturnHistory = returns.Where(r => r.BillId != bill.BillId).ToList();
+                    bill.ReturnHistory = new ObservableCollection<Bill>(returns.Where(r => r.BillId != bill.BillId));
 
                     double previousReturnsTotal = returns.Where(r => r.BillId < bill.BillId).Sum(r => Math.Abs(r.GrandTotal));
                     bill.RemainingDueAfterThisReturn = original.GrandTotal - previousReturnsTotal - Math.Abs(bill.GrandTotal);

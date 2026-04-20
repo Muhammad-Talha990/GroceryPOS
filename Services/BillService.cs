@@ -44,7 +44,7 @@ namespace GroceryPOS.Services
         /// Pass less than grandTotal for a credit/udhar sale (registered customers only).
         /// </param>
         public Bill CompleteBill(int? userId, int? customerId, List<BillDescription> items,
-            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1, string? billingAddress = null, string paymentMethod = "Cash")
+            double discountAmount, double taxAmount, double cashReceived, double paidAmount = -1, string? billingAddress = null, string paymentMethod = "Cash", string? onlinePaymentMethod = null, int? accountId = null)
         {
             // ── Validate inputs ──
             if (items == null || items.Count == 0)
@@ -120,7 +120,10 @@ namespace GroceryPOS.Services
                 CustomerId      = customerId,
                 PaidAmount      = paidAmount,
                 BillingAddress  = billingAddress,
-                PaymentMethod   = paymentMethod
+                PaymentMethod   = paymentMethod,
+                // Only store the sub-method for online payments; null it for cash to keep data clean
+                OnlinePaymentMethod = (paymentMethod == "Online") ? onlinePaymentMethod : null,
+                AccountId = (paymentMethod == "Online") ? accountId : null
             };
 
             // ── Save atomically (bill + items + stock) ──
@@ -174,5 +177,12 @@ namespace GroceryPOS.Services
         // ── Payment Method Stats ─────────────────────
         public double GetTodayCashInDrawer()    => _billRepo.GetTodayCashInDrawer();
         public double GetTodayOnlinePayments()  => _billRepo.GetTodayOnlinePayments();
+
+        /// <summary>
+        /// Returns online payment totals grouped by sub-method (Easypaisa, JazzCash, Bank Transfer)
+        /// for the given date range.
+        /// </summary>
+        public Dictionary<string, double> GetOnlinePaymentBreakdown(DateTime from, DateTime to)
+            => _billRepo.GetOnlinePaymentBreakdown(from, to);
     }
 }

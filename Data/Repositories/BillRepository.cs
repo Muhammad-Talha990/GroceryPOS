@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
 using GroceryPOS.Helpers;
 using GroceryPOS.Models;
+using System.Collections.ObjectModel;
 
 namespace GroceryPOS.Data.Repositories
 {
@@ -13,6 +14,7 @@ namespace GroceryPOS.Data.Repositories
     public class BillRepository
     {
         private readonly ItemRepository _itemRepo = new();
+        private readonly CustomerLedgerRepository _ledgerRepo = new();
 
         // ────────────────────────────────────────────
         //  TRANSACTIONAL BILL SAVE
@@ -54,8 +56,8 @@ namespace GroceryPOS.Data.Repositories
             using var billCmd = conn.CreateCommand();
             billCmd.Transaction = txn;
             billCmd.CommandText = @"
-                INSERT INTO Bills (CustomerId, UserId, TaxAmount, DiscountAmount, Status, BillPaymentMethod)
-                VALUES (@cid, @uid, @tax, @disc, @status, @billPayMethod);
+                INSERT INTO Bills (CustomerId, UserId, TaxAmount, DiscountAmount, Status, BillPaymentMethod, OnlinePaymentMethod, AccountId)
+                VALUES (@cid, @uid, @tax, @disc, @status, @billPayMethod, @onlinePayMethod, @accountId);
                 SELECT last_insert_rowid();
             ";
             billCmd.Parameters.AddWithValue("@cid", bill.CustomerId.HasValue ? (object)bill.CustomerId.Value : DBNull.Value);
@@ -64,6 +66,8 @@ namespace GroceryPOS.Data.Repositories
             billCmd.Parameters.AddWithValue("@disc", bill.DiscountAmount);
             billCmd.Parameters.AddWithValue("@status", bill.Status ?? "Completed");
             billCmd.Parameters.AddWithValue("@billPayMethod", bill.PaymentMethod ?? "Cash");
+            billCmd.Parameters.AddWithValue("@onlinePayMethod", string.IsNullOrEmpty(bill.OnlinePaymentMethod) ? (object)DBNull.Value : bill.OnlinePaymentMethod);
+            billCmd.Parameters.AddWithValue("@accountId", bill.AccountId.HasValue ? (object)bill.AccountId.Value : DBNull.Value);
 
             bill.BillId = Convert.ToInt32(billCmd.ExecuteScalar());
 
@@ -105,7 +109,39 @@ namespace GroceryPOS.Data.Repositories
                 payCmd.ExecuteNonQuery();
             }
 
-            bill.Items = items;
+            bill.Items = new ObservableCollection<BillDescription>(items);
+
+            // ── Step 4: Record Customer Ledger Entries ──
+            if (bill.CustomerId.HasValue)
+            {
+                // A. Record the SALE (Liability Created)
+                _ledgerRepo.AddEntry(new CustomerLedgerEntry
+                {
+                    CustomerId = bill.CustomerId.Value,
+                    Type = "SALE",
+                    ReferenceId = bill.InvoiceNumber,
+                    Description = $"Invoice #{bill.InvoiceNumber}",
+                    Debit = bill.GrandTotal, // Full amount of bill
+                    Credit = 0,
+                    EntryDate = DateTime.Now
+                }, conn, txn);
+
+                // B. Record the PAYMENT (Liability Reduced) if anything was paid at checkout
+                if (bill.PaidAmount > 0)
+                {
+                    _ledgerRepo.AddEntry(new CustomerLedgerEntry
+                    {
+                        CustomerId = bill.CustomerId.Value,
+                        Type = "PAYMENT",
+                        ReferenceId = bill.InvoiceNumber,
+                        Description = $"Initial Payment (Invoice #{bill.InvoiceNumber})",
+                        Debit = 0,
+                        Credit = bill.PaidAmount,
+                        EntryDate = DateTime.Now
+                    }, conn, txn);
+                }
+            }
+
             AppLogger.Info($"3NF Bill saved: ID={bill.BillId} | Status={bill.Status} | Paid={bill.PaidAmount:N2}");
             return bill;
         }
@@ -125,12 +161,15 @@ namespace GroceryPOS.Data.Repositories
                 SELECT b.*, 
                        u.Username, u.FullName as UserFullName, u.Role as UserRole,
                        c.FullName as CustomerName, c.Phone as CustomerPhone, c.Address as CustomerAddress,
+                       a.AccountTitle, a.AccountType, a.BankName,
                        (SELECT COALESCE(SUM(Quantity * UnitPrice), 0) FROM BillItems WHERE BillId = b.BillId) as SubTotal,
-                       (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId) as PaidAmount,
-                       (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
+                       (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId AND TransactionType != 'Return Offset') as PaidAmount,
+                       (SELECT COALESCE(SUM(bri.Quantity * bri.UnitPrice), 0) FROM BillReturnItems bri JOIN BillReturns br ON bri.ReturnId = br.ReturnId WHERE br.BillId = b.BillId) as ReturnedAmount,
+                       (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId AND TransactionType != 'Return Offset' ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
                 FROM Bills b
                 LEFT JOIN Users u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                LEFT JOIN Accounts a ON b.AccountId = a.Id
                 WHERE b.BillId = @id;";
             cmd.Parameters.AddWithValue("@id", billId);
 
@@ -142,9 +181,21 @@ namespace GroceryPOS.Data.Repositories
             }
 
             if (bill != null)
+            {
                 LoadLineItems(conn, new List<Bill> { bill });
+                LoadAuditLogs(bill, conn);
+            }
 
             return bill;
+        }
+
+        public Bill? GetByInvoiceNumber(string invoiceNum)
+        {
+            if (string.IsNullOrEmpty(invoiceNum)) return null;
+            // InvoiceNumber is just BillId formatted as D5. So we parse it back to ID.
+            if (!int.TryParse(invoiceNum, out int billId)) return null;
+
+            return GetById(billId);
         }
 
         /// <summary>Gets all bills ordered by date descending.</summary>
@@ -157,17 +208,22 @@ namespace GroceryPOS.Data.Repositories
                 SELECT b.*, 
                        u.Username, u.FullName as UserFullName, u.Role as UserRole,
                        c.FullName as CustomerName, c.Phone as CustomerPhone, c.Address as CustomerAddress,
+                       a.AccountTitle, a.AccountType, a.BankName,
                        (SELECT COALESCE(SUM(Quantity * UnitPrice), 0) FROM BillItems WHERE BillId = b.BillId) as SubTotal,
                        (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId) as PaidAmount,
                        (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
                 FROM Bills b
                 LEFT JOIN Users u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                LEFT JOIN Accounts a ON b.AccountId = a.Id
                 ORDER BY b.CreatedAt DESC;";
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                bills.Add(MapBill(reader));
+            {
+                var bill = MapBill(reader);
+                if (bill != null) bills.Add(bill);
+            }
 
             LoadLineItems(conn, bills);
             return bills;
@@ -183,20 +239,25 @@ namespace GroceryPOS.Data.Repositories
                 SELECT b.*, 
                        u.Username, u.FullName as UserFullName, u.Role as UserRole,
                        c.FullName as CustomerName, c.Phone as CustomerPhone, c.Address as CustomerAddress,
+                       a.AccountTitle, a.AccountType, a.BankName,
                        (SELECT COALESCE(SUM(Quantity * UnitPrice), 0) FROM BillItems WHERE BillId = b.BillId) as SubTotal,
                        (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId) as PaidAmount,
                        (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
                 FROM Bills b
                 LEFT JOIN Users u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
-                WHERE b.CreatedAt >= @from AND b.CreatedAt < @to 
+                LEFT JOIN Accounts a ON b.AccountId = a.Id
+                WHERE datetime(b.CreatedAt, 'localtime') >= @from AND datetime(b.CreatedAt, 'localtime') < @to 
                 ORDER BY b.CreatedAt DESC;";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
 
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
-                bills.Add(MapBill(reader));
+            {
+                var bill = MapBill(reader);
+                if (bill != null) bills.Add(bill);
+            }
 
             LoadLineItems(conn, bills);
             return bills;
@@ -216,12 +277,14 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COALESCE(SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount, 0)
-                FROM Bills b
-                JOIN BillItems bi ON b.BillId = bi.BillId
-                WHERE b.CreatedAt >= @from AND b.CreatedAt < @to AND b.Status != 'Cancelled';";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+                SELECT COALESCE(SUM(bill_total), 0)
+                FROM (
+                    SELECT (SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount) as bill_total
+                    FROM Bills b
+                    JOIN BillItems bi ON b.BillId = bi.BillId
+                    WHERE date(b.CreatedAt, 'localtime') = date('now', 'localtime') AND b.Status != 'Cancelled'
+                    GROUP BY b.BillId
+                );";
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -239,10 +302,8 @@ namespace GroceryPOS.Data.Repositories
                 SELECT COALESCE(SUM(p.Amount), 0)
                 FROM Payments p
                 JOIN Bills b ON p.BillId = b.BillId
-                WHERE b.CreatedAt >= @from AND b.CreatedAt < @to 
+                WHERE date(b.CreatedAt, 'localtime') = date('now', 'localtime') 
                   AND b.Status != 'Cancelled';";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -255,12 +316,10 @@ namespace GroceryPOS.Data.Repositories
                 SELECT COALESCE(SUM(p.Amount), 0)
                 FROM Payments p
                 JOIN Bills b ON p.BillId = b.BillId
-                WHERE p.PaidAt >= @from AND p.PaidAt < @to
-                  AND b.CreatedAt >= @from AND b.CreatedAt < @to
+                WHERE date(p.PaidAt, 'localtime') = date('now', 'localtime')
+                  AND date(b.CreatedAt, 'localtime') = date('now', 'localtime')
                   AND b.Status != 'Cancelled'
                   AND p.TransactionType != 'Return Offset';";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -271,9 +330,7 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT COALESCE(SUM(RefundAmount), 0) FROM BillReturns 
-                WHERE ReturnedAt >= @from AND ReturnedAt < @to;";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+                WHERE date(ReturnedAt, 'localtime') = date('now', 'localtime');";
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -286,11 +343,9 @@ namespace GroceryPOS.Data.Repositories
                 SELECT COALESCE(SUM(p.Amount), 0)
                 FROM Payments p
                 JOIN Bills b ON p.BillId = b.BillId
-                WHERE p.PaidAt >= @from AND p.PaidAt < @to
-                  AND b.CreatedAt < @from
+                WHERE date(p.PaidAt, 'localtime') = date('now', 'localtime')
+                  AND date(b.CreatedAt, 'localtime') < date('now', 'localtime')
                   AND p.TransactionType != 'Return Offset';";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -303,9 +358,7 @@ namespace GroceryPOS.Data.Repositories
                 SELECT COALESCE(SUM(bri.Quantity * bri.UnitPrice), 0)
                 FROM BillReturnItems bri
                 JOIN BillReturns br ON bri.ReturnId = br.ReturnId
-                WHERE br.ReturnedAt >= @from AND br.ReturnedAt < @to;";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+                WHERE date(br.ReturnedAt, 'localtime') = date('now', 'localtime');";
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -319,15 +372,13 @@ namespace GroceryPOS.Data.Repositories
                     COALESCE((SELECT SUM(p.Amount)
                         FROM Payments p
                         JOIN Bills b ON p.BillId = b.BillId
-                        WHERE p.PaidAt >= @from AND p.PaidAt < @to
+                        WHERE date(p.PaidAt, 'localtime') = date('now', 'localtime')
                           AND b.Status != 'Cancelled'
                           AND p.TransactionType != 'Return Offset'
                           AND b.BillPaymentMethod = 'Cash'), 0)
                     -
                     COALESCE((SELECT SUM(RefundAmount) FROM BillReturns 
-                        WHERE ReturnedAt >= @from AND ReturnedAt < @to), 0);";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+                        WHERE date(ReturnedAt, 'localtime') = date('now', 'localtime')), 0);";
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -340,12 +391,10 @@ namespace GroceryPOS.Data.Repositories
                 SELECT COALESCE(SUM(p.Amount), 0)
                 FROM Payments p
                 JOIN Bills b ON p.BillId = b.BillId
-                WHERE p.PaidAt >= @from AND p.PaidAt < @to
+                WHERE date(p.PaidAt, 'localtime') = date('now', 'localtime')
                   AND b.Status != 'Cancelled'
                   AND p.TransactionType != 'Return Offset'
                   AND b.BillPaymentMethod = 'Online';";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
         }
 
@@ -356,7 +405,7 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT COALESCE(SUM(RefundAmount), 0) FROM BillReturns
-                WHERE ReturnedAt >= @from AND ReturnedAt < @to;";
+                WHERE datetime(ReturnedAt, 'localtime') >= @from AND datetime(ReturnedAt, 'localtime') < @to;";
             cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
             cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
             return Convert.ToDouble(cmd.ExecuteScalar());
@@ -376,9 +425,12 @@ namespace GroceryPOS.Data.Repositories
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT 
-                    (SELECT COALESCE(SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount, 0)
-                     FROM Bills b JOIN BillItems bi ON b.BillId = bi.BillId
-                     WHERE b.Status != 'Cancelled')
+                    (SELECT COALESCE(SUM(bill_total), 0) FROM (
+                        SELECT (SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount) as bill_total
+                        FROM Bills b JOIN BillItems bi ON b.BillId = bi.BillId
+                        WHERE b.Status != 'Cancelled'
+                        GROUP BY b.BillId
+                    ))
                     -
                     (SELECT COALESCE(SUM(Amount), 0) FROM Payments);";
             return Convert.ToDouble(cmd.ExecuteScalar());
@@ -389,9 +441,7 @@ namespace GroceryPOS.Data.Repositories
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM Bills WHERE CreatedAt >= @from AND CreatedAt < @to;";
-            cmd.Parameters.AddWithValue("@from", DateTime.Today.ToString("yyyy-MM-dd HH:mm:ss"));
-            cmd.Parameters.AddWithValue("@to", DateTime.Today.AddDays(1).ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.CommandText = "SELECT COUNT(*) FROM Bills WHERE date(CreatedAt, 'localtime') = date('now', 'localtime');";
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
@@ -404,7 +454,8 @@ namespace GroceryPOS.Data.Repositories
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        /// <summary>Updates the status of a bill.</summary>
+
+
         public void UpdateBillStatus(int billId, string status, SqliteConnection? conn = null, SqliteTransaction? txn = null)
         {
             bool manageConnection = (conn == null);
@@ -466,12 +517,15 @@ namespace GroceryPOS.Data.Repositories
                 SELECT b.*, 
                        u.Username, u.FullName as UserFullName, u.Role as UserRole,
                        c.FullName as CustomerName, c.Phone as CustomerPhone, c.Address as CustomerAddress,
+                       a.AccountTitle, a.AccountType, a.BankName,
                        (SELECT COALESCE(SUM(Quantity * UnitPrice), 0) FROM BillItems WHERE BillId = b.BillId) as SubTotal,
-                       (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId) as PaidAmount,
-                       (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
+                       (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId AND TransactionType != 'Return Offset') as PaidAmount,
+                       (SELECT COALESCE(SUM(bri.Quantity * bri.UnitPrice), 0) FROM BillReturnItems bri JOIN BillReturns br ON bri.ReturnId = br.ReturnId WHERE br.BillId = b.BillId) as ReturnedAmount,
+                       (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId AND TransactionType != 'Return Offset' ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
                 FROM Bills b
                 LEFT JOIN Users u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                LEFT JOIN Accounts a ON b.AccountId = a.Id
                 WHERE b.CustomerId = @cid
                 ORDER BY b.CreatedAt DESC;";
             cmd.Parameters.AddWithValue("@cid", customerId);
@@ -479,7 +533,10 @@ namespace GroceryPOS.Data.Repositories
             using (var reader = cmd.ExecuteReader())
             {
                 while (reader.Read())
-                    bills.Add(MapBill(reader));
+                {
+                    var bill = MapBill(reader);
+                    if (bill != null) bills.Add(bill);
+                }
             }
             LoadLineItems(conn, bills);
             return bills;
@@ -493,12 +550,15 @@ namespace GroceryPOS.Data.Repositories
                 SELECT b.*, 
                        u.Username, u.FullName as UserFullName, u.Role as UserRole,
                        c.FullName as CustomerName, c.Phone as CustomerPhone, c.Address as CustomerAddress,
+                       a.AccountTitle, a.AccountType, a.BankName,
                        (SELECT COALESCE(SUM(Quantity * UnitPrice), 0) FROM BillItems WHERE BillId = b.BillId) as SubTotal,
-                       (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId) as PaidAmount,
-                       (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
+                       (SELECT COALESCE(SUM(Amount), 0) FROM Payments WHERE BillId = b.BillId AND TransactionType != 'Return Offset') as PaidAmount,
+                       (SELECT COALESCE(SUM(bri.Quantity * bri.UnitPrice), 0) FROM BillReturnItems bri JOIN BillReturns br ON bri.ReturnId = br.ReturnId WHERE br.BillId = b.BillId) as ReturnedAmount,
+                       (SELECT PaymentMethod FROM Payments WHERE BillId = b.BillId AND TransactionType != 'Return Offset' ORDER BY PaidAt ASC LIMIT 1) as PaymentMethod
                 FROM Bills b
                 LEFT JOIN Users u ON b.UserId = u.Id
                 LEFT JOIN Customers c ON b.CustomerId = c.CustomerId
+                LEFT JOIN Accounts a ON b.AccountId = a.Id
                 WHERE b.CustomerId = @cid
                 ORDER BY b.CreatedAt DESC LIMIT 1;";
             cmd.Parameters.AddWithValue("@cid", customerId);
@@ -520,11 +580,14 @@ namespace GroceryPOS.Data.Repositories
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COUNT(b.BillId), 
-                       COALESCE(SUM(bi.Quantity * bi.UnitPrice + b.TaxAmount - b.DiscountAmount), 0)
-                FROM Bills b
-                JOIN BillItems bi ON b.BillId = bi.BillId
-                WHERE b.CustomerId = @cid AND b.Status != 'Cancelled'";
+                SELECT COUNT(*), COALESCE(SUM(bill_total), 0)
+                FROM (
+                    SELECT (SUM(bi.Quantity * bi.UnitPrice) + b.TaxAmount - b.DiscountAmount) as bill_total
+                    FROM Bills b
+                    JOIN BillItems bi ON b.BillId = bi.BillId
+                    WHERE b.CustomerId = @cid AND b.Status != 'Cancelled'
+                    GROUP BY b.BillId
+                );";
             cmd.Parameters.AddWithValue("@cid", customerId);
 
             using var reader = cmd.ExecuteReader();
@@ -615,38 +678,143 @@ namespace GroceryPOS.Data.Repositories
             }
         }
 
+        public void LoadAuditLogs(Bill bill)
+        {
+            using var conn = DatabaseHelper.GetConnection();
+            LoadAuditLogs(bill, conn);
+        }
+
+        private void LoadAuditLogs(Bill bill, SqliteConnection conn)
+        {
+            // Clear existing logs to prevent duplicated items on refresh (The 'Stacking' Bug)
+            bill.PaymentLogs.Clear();
+            bill.ReturnLogs.Clear();
+
+            // 1. Load Payment History
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT PaymentId, Amount, PaymentMethod, TransactionType, Note, PaidAt
+                    FROM Payments
+                    WHERE BillId = @bid
+                    ORDER BY PaidAt ASC;";
+                cmd.Parameters.AddWithValue("@bid", bill.BillId);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var type = reader.GetString(3);
+                    if (type == "Return Offset") continue; // Separated logically now
+
+                    bill.PaymentLogs.Add(new CreditPayment
+                    {
+                        PaymentId       = reader.GetInt32(0),
+                        BillId          = bill.BillId,
+                        AmountPaid      = reader.GetDouble(1),
+                        PaymentMethod   = reader.GetString(2),
+                        TransactionType = type,
+                        Note            = reader.IsDBNull(4) ? null : reader.GetString(4),
+                        PaidAt          = reader.GetDateTime(5)
+                    });
+                }
+            }
+
+            // 2. Load Return History (Headers)
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT ReturnId, RefundAmount, ReturnedAt
+                    FROM BillReturns
+                    WHERE BillId = @bid
+                    ORDER BY ReturnedAt ASC;";
+                cmd.Parameters.AddWithValue("@bid", bill.BillId);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var ret = new ReturnAuditGroup
+                    {
+                        ReturnId     = reader.GetInt32(0),
+                        RefundAmount = reader.GetDouble(1),
+                        ReturnedAt   = reader.GetDateTime(2)
+                    };
+                    bill.ReturnLogs.Add(ret);
+                }
+            }
+
+            // 3. Load Return Items for each return
+            foreach (var ret in bill.ReturnLogs)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+                    SELECT ri.ReturnItemId, ri.BillItemId, ri.Quantity, ri.UnitPrice, i.Description
+                    FROM BillReturnItems ri
+                    JOIN BillItems bi ON ri.BillItemId = bi.BillItemId
+                    JOIN Items i ON bi.ItemId = i.ItemId
+                    WHERE ri.ReturnId = @rid;";
+                cmd.Parameters.AddWithValue("@rid", ret.ReturnId);
+
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    ret.Items.Add(new BillReturnItemAudit
+                    {
+                        ItemDescription = reader.GetString(4),
+                        Quantity        = Convert.ToInt32(reader.GetDouble(2)),
+                        UnitPrice       = reader.GetDouble(3)
+                    });
+                }
+            }
+        }
+
         // ────────────────────────────────────────────
         //  Mapper
         // ────────────────────────────────────────────
 
-        private static Bill MapBill(SqliteDataReader reader)
+        public Bill? MapBill(SqliteDataReader reader)
         {
             var bill = new Bill
             {
                 BillId         = reader.GetInt32(reader.GetOrdinal("BillId")),
-                CreatedAt      = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
-                CustomerId     = reader.IsDBNull(reader.GetOrdinal("CustomerId")) ? null : reader.GetInt32(reader.GetOrdinal("CustomerId")),
-                UserId         = reader.IsDBNull(reader.GetOrdinal("UserId"))     ? null : reader.GetInt32(reader.GetOrdinal("UserId")),
+                CustomerId     = reader.IsDBNull(reader.GetOrdinal("CustomerId")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("CustomerId")),
+                UserId         = reader.IsDBNull(reader.GetOrdinal("UserId")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("UserId")),
                 TaxAmount      = reader.GetDouble(reader.GetOrdinal("TaxAmount")),
                 DiscountAmount = reader.GetDouble(reader.GetOrdinal("DiscountAmount")),
                 Status         = reader.GetString(reader.GetOrdinal("Status")),
-                SubTotal       = reader.HasColumn("SubTotal") ? reader.GetDouble(reader.GetOrdinal("SubTotal")) : 0,
-                PaidAmount     = reader.HasColumn("PaidAmount") ? reader.GetDouble(reader.GetOrdinal("PaidAmount")) : 0,
-                PaymentMethod  = reader.HasColumn("BillPaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("BillPaymentMethod"))
-                                 ? reader.GetString(reader.GetOrdinal("BillPaymentMethod"))
-                                 : (reader.HasColumn("PaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("PaymentMethod")) ? reader.GetString(reader.GetOrdinal("PaymentMethod")) : "Cash")
+                CreatedAt      = reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
+                PaymentMethod  = reader.HasColumn("PaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("PaymentMethod")) ? reader.GetString(reader.GetOrdinal("PaymentMethod")) : "Cash",
+                OnlinePaymentMethod = reader.HasColumn("OnlinePaymentMethod") && !reader.IsDBNull(reader.GetOrdinal("OnlinePaymentMethod")) ? reader.GetString(reader.GetOrdinal("OnlinePaymentMethod")) : null,
+                AccountId      = reader.HasColumn("AccountId") && !reader.IsDBNull(reader.GetOrdinal("AccountId")) ? (int?)reader.GetInt32(reader.GetOrdinal("AccountId")) : null
             };
+
+            // Calculated aggregates (if present in query)
+            if (reader.HasColumn("SubTotal")) bill.SubTotal = reader.GetDouble(reader.GetOrdinal("SubTotal"));
+            if (reader.HasColumn("PaidAmount")) bill.PaidAmount = reader.GetDouble(reader.GetOrdinal("PaidAmount"));
+            if (reader.HasColumn("ReturnedAmount")) bill.ReturnedAmount = reader.GetDouble(reader.GetOrdinal("ReturnedAmount"));
+
+            // Map Account navigation
+            if (bill.AccountId.HasValue && reader.HasColumn("AccountTitle") && !reader.IsDBNull(reader.GetOrdinal("AccountTitle")))
+            {
+                bill.Account = new Account
+                {
+                    Id           = bill.AccountId.Value,
+                    AccountTitle = reader.GetString(reader.GetOrdinal("AccountTitle")),
+                    AccountType  = reader.GetString(reader.GetOrdinal("AccountType")),
+                    BankName     = reader.IsDBNull(reader.GetOrdinal("BankName")) ? null : reader.GetString(reader.GetOrdinal("BankName"))
+                };
+            }
 
             // Mapping Customer navigation
             if (bill.CustomerId.HasValue && reader.HasColumn("CustomerName") && !reader.IsDBNull(reader.GetOrdinal("CustomerName")))
             {
                 bill.Customer = new Customer
                 {
-                    CustomerId   = bill.CustomerId.Value,
-                    FullName     = reader.GetString(reader.GetOrdinal("CustomerName")),
-                    Phone        = reader.GetString(reader.GetOrdinal("CustomerPhone")),
-                    Address      = reader.IsDBNull(reader.GetOrdinal("CustomerAddress")) ? null : reader.GetString(reader.GetOrdinal("CustomerAddress"))
+                    CustomerId = bill.CustomerId.Value,
+                    FullName   = reader.GetString(reader.GetOrdinal("CustomerName")),
+                    Phone      = reader.GetString(reader.GetOrdinal("CustomerPhone")),
+                    Address    = reader.IsDBNull(reader.GetOrdinal("CustomerAddress")) ? null : reader.GetString(reader.GetOrdinal("CustomerAddress"))
                 };
+                bill.BillingAddress = bill.Customer.Address;
             }
 
             // Mapping User navigation
@@ -664,19 +832,17 @@ namespace GroceryPOS.Data.Repositories
             return bill;
         }
 
-        public void UpdatePrintStatus(int billId, bool isPrinted, DateTime? printedAt, int printAttempts)
+        public void UpdatePrintStatus(int billId, bool isPrinted, DateTime? printedAt)
         {
             using var conn = DatabaseHelper.GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 UPDATE Bills 
                 SET IsPrinted = @isPrinted, 
-                    PrintedAt = @printedAt, 
-                    PrintAttempts = @printAttempts 
+                    PrintedAt = @printedAt 
                 WHERE BillId = @id;";
             cmd.Parameters.AddWithValue("@isPrinted", isPrinted ? 1 : 0);
             cmd.Parameters.AddWithValue("@printedAt", printedAt.HasValue ? (object)printedAt.Value.ToString("yyyy-MM-dd HH:mm:ss") : DBNull.Value);
-            cmd.Parameters.AddWithValue("@printAttempts", printAttempts);
             cmd.Parameters.AddWithValue("@id", billId);
             cmd.ExecuteNonQuery();
         }
@@ -684,6 +850,37 @@ namespace GroceryPOS.Data.Repositories
         // ────────────────────────────────────────────
         //  CREDIT / UDHAR read operations
         // ────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns total online payments grouped by OnlinePaymentMethod for the given date range.
+        /// Only counts Sale payments (excludes Return Offset) on Online bills.
+        /// </summary>
+        public Dictionary<string, double> GetOnlinePaymentBreakdown(DateTime from, DateTime to)
+        {
+            var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            using var conn = DatabaseHelper.GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(a.AccountTitle, b.OnlinePaymentMethod, '(Unspecified)') as Method,
+                       COALESCE(SUM(p.Amount), 0) as Total
+                FROM Bills b
+                JOIN Payments p ON b.BillId = p.BillId
+                LEFT JOIN Accounts a ON b.AccountId = a.Id
+                WHERE b.BillPaymentMethod = 'Online'
+                  AND b.CreatedAt >= @from AND b.CreatedAt < @to
+                  AND b.Status != 'Cancelled'
+                  AND p.TransactionType != 'Return Offset'
+                GROUP BY COALESCE(a.AccountTitle, b.OnlinePaymentMethod);
+            ";
+            cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd HH:mm:ss"));
+            cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                result[reader.GetString(0)] = reader.GetDouble(1);
+
+            return result;
+        }
 
         /// <summary>Returns all credit bills for a customer, newest first.</summary>
         public List<Bill> GetCreditBillsByCustomer(int customerId)

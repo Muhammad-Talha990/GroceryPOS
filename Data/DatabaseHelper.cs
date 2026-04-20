@@ -16,13 +16,10 @@ namespace GroceryPOS.Data
 
         static DatabaseHelper()
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var appFolder = Path.Combine(appData, "GroceryPOS");
+            // Use the application's base directory (portable mode)
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             
-            if (!Directory.Exists(appFolder))
-                Directory.CreateDirectory(appFolder);
-
-            DbPath = Path.Combine(appFolder, "GroceryPOS.db");
+            DbPath = Path.Combine(baseDir, "GroceryPOS.db");
             ConnectionString = $"Data Source={DbPath}";
         }
 
